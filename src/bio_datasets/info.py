@@ -32,7 +32,7 @@ class DatasetInfo(DatasetInfo):
     def _to_yaml_dict(self) -> dict:
         # sometimes features are None
         datasets_features = self.features.to_fallback()
-        ret = super()._to_yaml_dict()
+        ret = super()._to_yaml_dict()  # this will call asdict on self
         ret["bio_features"] = ret["features"]
         ret["features"] = datasets_features._to_yaml_list()
         return ret
@@ -42,6 +42,7 @@ class DatasetInfo(DatasetInfo):
         return super().from_dict(info_dict)
 
     def to_dict(self):
+        # TODO: why not also save bio_features here? where is this used? only _dump_info?
         new_info = self.copy()
         new_info.features = self.features.to_fallback()
         return asdict(new_info)

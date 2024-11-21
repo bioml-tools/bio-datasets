@@ -103,28 +103,6 @@ class CustomFeature:
 # class CompositeFeature(CustomFeature):
 #     def __call__(self):
 
-
-"""Compressed array:
-
-arrow automatically handles flattening.
-datasets maybe does stuff to allow for ragged arrays?
-
-pa_type = get_nested_type(type) if type is not None else None
-optimized_int_pa_type = (
-    get_nested_type(self.optimized_int_type) if self.optimized_int_type is not None else None
-)
-trying_cast_to_python_objects = False
-try:
-    # custom pyarrow types
-    if isinstance(pa_type, _ArrayXDExtensionType):
-        storage = to_pyarrow_listarray(data, pa_type)
-        return pa.ExtensionArray.from_storage(pa_type, storage)
-
-Implementation plan: use ArrayXDExtensionType (binary numpy type), and handle compression / decompression
-in encode_example / decode_example.
-"""
-
-
 def _safe_cast(array, dtype):
     dtype = np.dtype(dtype)
     if dtype == array.dtype:
@@ -143,6 +121,8 @@ class _CompressedArrayXD(CustomFeature):
     """
     A feature that stores a compressed 1D array, with a specified sequence of compression schemes.
     To store multidimensional arrays, store each dimension separately.
+
+    N.B. arrow handles flattening.
 
     Compression schemes are taken from biotite.structure.pdbx.compress.
     Currently supported compression schemes:
@@ -180,7 +160,7 @@ class _CompressedArrayXD(CustomFeature):
     shape: tuple
     dtype: np.dtype
     encoding_list: List[
-        encoding.Encoding
+        encoding.Encoding | Dict
     ]  # should exclude ByteArrayEncoding; pyarrow will cast to bytes
 
     def __call__(self):
@@ -190,7 +170,13 @@ class _CompressedArrayXD(CustomFeature):
         return pa_type(self.shape, self.dtype)
 
     def __post_init__(self):
-        self.deserialize()
+        assert len(self.encoding_list) > 0
+        if isinstance(self.encoding_list[0], dict):
+            self.deserialize()
+
+        self._encoding_list = self.encoding_list
+        # hack to make asdict work
+        self.encoding_list = [enc.serialize() for enc in self.encoding_list]
 
     @classmethod
     def from_array(cls, array, float_tolerance: float = 0.000001):
@@ -203,22 +189,19 @@ class _CompressedArrayXD(CustomFeature):
     def _encode_example(self, example):
         # TODO: dtype checks?
         assert isinstance(example, np.ndarray)
-        encoded = encoding.encode_stepwise(example, self.encoding_list)
+        encoded = encoding.encode_stepwise(example, self._encoding_list)
         # one of steps performed by ByteArrayEncoding
         return _safe_cast(encoded, self.dtype)
 
     def _decode_example(self, example, token_per_repo_id=None):
-        return encoding.decode_stepwise(example, self.encoding)
-
-    def __asdict__(self):
-        return [enc.serialize() for enc in self.encoding]
+        return encoding.decode_stepwise(example, self._encoding_list)
 
     def deserialize(self):
-        if isinstance(self.encoding[0], dict):
-            self.encoding = [
-                encoding.deserialize_encoding(enc) for enc in self.encoding
+        if isinstance(self.encoding_list[0], dict):
+            self.encoding_list = [
+                encoding.deserialize_encoding(enc) for enc in self.encoding_list
             ]
-        assert all(isinstance(enc, encoding.Encoding) for enc in self.encoding)
+        assert all(isinstance(enc, encoding.Encoding) for enc in self.encoding_list)
 
 
 class CompressedArray1D(_CompressedArrayXD):
