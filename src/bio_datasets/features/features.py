@@ -4,6 +4,7 @@ Custom features for bio datasets.
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
 import json
+import msgpack
 from dataclasses import dataclass, field
 from typing import ClassVar, Dict, List, Optional, Union
 
@@ -31,17 +32,20 @@ from datasets.features.features import (
     generate_from_arrow_type,
     register_feature,
     require_decoding,
+    string_to_arrow
 )
 from datasets.utils.py_utils import zip_dict
 
 from bio_datasets.structure.pdbx import BinaryCIFData, compress, encoding
+from bio_datasets.structure.pdbx.bcif import _encode_numpy as encode_numpy
+
 
 array_extension_types = {
-    "CompressedArray1D": Array1DExtensionType,
-    "CompressedArray2D": Array2DExtensionType,
-    "CompressedArray3D": Array3DExtensionType,
-    "CompressedArray4D": Array4DExtensionType,
-    "CompressedArray5D": Array5DExtensionType,
+    "Array1D": Array1DExtensionType,
+    "Array2D": Array2DExtensionType,
+    "Array3D": Array3DExtensionType,
+    "Array4D": Array4DExtensionType,
+    "Array5D": Array5DExtensionType,
 }
 
 
@@ -117,8 +121,9 @@ def _safe_cast(array, dtype):
     return array.astype(dtype)
 
 
+# TODO: maybe restore support for XD - if ok for non-encoding byte packing
 @dataclass
-class _CompressedArrayXD(CustomFeature):
+class _CompressedArray1D(CustomFeature):
     """
     A feature that stores a compressed 1D array, with a specified sequence of compression schemes.
     To store multidimensional arrays, store each dimension separately.
@@ -166,13 +171,19 @@ class _CompressedArrayXD(CustomFeature):
     dtype: np.dtype
     encoding_list: List[
         encoding.Encoding | Dict
-    ]  # should exclude ByteArrayEncoding; pyarrow will cast to bytes
+    ]  # should exclude ByteArrayEncoding; pyarrow will cast to bytes (or we will if save_metadata_bytes is true)
+    _type: str = field(default="CompressedArray1D", init=False, repr=False)
+    save_metadata_bytes: bool = False  # save the encoding metadata as bytes. allows each array to have its own encoding metadata.
 
     def __call__(self):
-        pa_type = array_extension_types[
-            self.__class__.__name__.replace("Compressed", "")
-        ]
-        return pa_type(self.shape, self.dtype)
+        if self.save_metadata_bytes:
+            return pa.list_(string_to_arrow("bytes"))  # or binary?
+        else:
+            # TODO: n.b. we delete compressed so get the standard ArrayExtensionType
+            pa_type = array_extension_types[
+                self.__class__.__name__.replace("Compressed", "")
+            ]
+            return pa_type(self.shape, self.dtype)
 
     def __post_init__(self):
         assert len(self.encoding_list) > 0
@@ -182,6 +193,8 @@ class _CompressedArrayXD(CustomFeature):
         self._encoding_list = self.encoding_list
         # hack to make asdict work
         self.encoding_list = [enc.serialize() for enc in self.encoding_list]
+        if self.save_metadata_bytes:
+            self.encoding_list.append(encoding.ByteArrayEncoding())
 
     @classmethod
     def from_array(cls, array, float_tolerance: float = 0.000001):
@@ -194,9 +207,22 @@ class _CompressedArrayXD(CustomFeature):
     def _encode_example(self, example):
         # TODO: dtype checks?
         assert isinstance(example, np.ndarray)
-        encoded = encoding.encode_stepwise(example, self._encoding_list)
-        # one of steps performed by ByteArrayEncoding
-        return _safe_cast(encoded, self.dtype)
+        if self.save_metadata_bytes:
+            encoding_list = self._encoding_list + encoding.ByteArrayEncoding()
+            encoded = encoding.encode_stepwise(example, encoding_list)
+            # c.f. compress._data_size_in_file; BinaryCIFData.serialize
+            if not isinstance(encoded, bytes):
+                raise ValueError("Final encoding must return 'bytes' if packing encoding metadata")
+            serialized_encoding = [enc.serialize() for enc in self._encoding]
+            serialized_content = {"data": encoded, "encoding": serialized_encoding}
+            packed_bytes = msgpack.packb(
+                serialized_content, use_bin_type=True, default=encode_numpy
+            )
+            return packed_bytes
+        else:
+            encoded = encoding.encode_stepwise(example, self._encoding_list)
+            # one of steps performed by ByteArrayEncoding
+            return _safe_cast(encoded, self.dtype)
 
     def _decode_example(self, example, token_per_repo_id=None):
         return encoding.decode_stepwise(example, self._encoding_list)
@@ -207,31 +233,6 @@ class _CompressedArrayXD(CustomFeature):
                 encoding.deserialize_encoding(enc) for enc in self.encoding_list
             ]
         assert all(isinstance(enc, encoding.Encoding) for enc in self.encoding_list)
-
-
-class CompressedArray1D(_CompressedArrayXD):
-    # Automatically constructed
-    _type: str = field(default="CompressedArray1D", init=False, repr=False)
-
-
-class CompressedArray2D(_CompressedArrayXD):
-    # Automatically constructed
-    _type: str = field(default="CompressedArray2D", init=False, repr=False)
-
-
-class CompressedArray3D(_CompressedArrayXD):
-    # Automatically constructed
-    _type: str = field(default="CompressedArray3D", init=False, repr=False)
-
-
-class CompressedArray4D(_CompressedArrayXD):
-    # Automatically constructed
-    _type: str = field(default="CompressedArray4D", init=False, repr=False)
-
-
-class CompressedArray5D(_CompressedArrayXD):
-    # Automatically constructed
-    _type: str = field(default="CompressedArray5D", init=False, repr=False)
 
 
 # because of recursion, we can't just call datasets encode_nested_example after checking for CustomFeature

@@ -276,6 +276,7 @@ def _data_size_in_file(data):
 def _get_decimal_places(array, tol):
     """
     Get the number of decimal places in a floating point array.
+    (number of decimal places at which the values can be rounded within the given tolerance)
 
     Parameters
     ----------

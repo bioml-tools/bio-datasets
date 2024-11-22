@@ -22,6 +22,10 @@ import numpy as np
 from biotite.structure.info.ccd import get_ccd
 from biotite.structure.io.pdbx import get_component
 
+# idealised values. Source?
+BACKBONE_BOND_LENGTHS = np.array([1.33, 1.46, 1.52])
+BACKBONE_BOND_ANGLES = np.array([1.095, 0.98, 1.20])
+
 # Distance from one CA to next CA [trans configuration: omega = 180].
 ca_ca = 3.80209737096
 

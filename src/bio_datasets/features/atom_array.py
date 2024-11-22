@@ -26,6 +26,7 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
+from bio_datasets.features.features import CompressedArray1D, CompressedArray2D
 from bio_datasets.structure import (
     Biomolecule,
     BiomoleculeChain,
@@ -36,6 +37,7 @@ from bio_datasets.structure import (
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
 )
+from bio_datasets.structure.pdbx import encoding
 from bio_datasets.structure.protein import (
     ProteinChain,
     ProteinComplex,
@@ -1080,7 +1082,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         default_factory=functools.partial(ProteinDictionary.from_preset, "protein")
     )
     load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
-    internal_coords_type: str = None  # foldcomp, idealised, or pnerf
+    use_internal_coords: bool = False
     _type: str = field(
         default="ProteinAtomArrayFeature", init=False, repr=False
     )  # registered feature name
@@ -1090,6 +1092,99 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         assert (
             self.residue_dictionary is not None
         ), "residue_dictionary must be provided"
+        if self.use_internal_coords:
+            # override features
+            self._features = self._make_internal_coords_features_dict()
+
+    def _make_internal_coords_features_dict(self):
+        # TODO: maybe just don't ever store restype_index?
+        if self.residue_dictionary is not None:
+            residue_identifier = ("restype_index", Array1D((None,), "uint8"))
+        else:
+            residue_identifier = ("res_name", Array1D((None,), "string"))
+        # bond lengths and angles are going to be stored as int8 for sure.
+        # bond length are going to be stored as sparse
+        # n.b. sparse arrays need to be stored as int16 - so actual values are a factor of 4
+        # larger than individual int8 values (double for 16-bit ints and double for array index).
+        # this therefore only makes sense for relatively high sparsity values (75% + ? need to do the maths)
+        # it's better to use 1D features for sparse encoding
+
+        # TODO: im not sure whether fixed point encoding is exactly what i want - i don't care about dp only, also about actual range.
+        # - a uniformly gridded, range-based encoding might be more intuitive/natural...
+        bond_length_encoding = [
+            encoding.DeltaEncoding(),
+            encoding.ZeroEncoding(),
+            encoding.FixedPointEncoding(100),
+            encoding.SparseEncoding(),
+            encoding.IntegerPackingEncoding(),
+        ]
+        bond_length_feat = CompressedArray1D(
+            (None, 3, bond_length_encoding),
+            "int8",
+            mean_shift=protein_constants.BACKBONE_BOND_LENGTHS,
+        )
+        bond_angle_encoding = [
+            encoding.DeltaEncoding(),
+            encoding.ZeroEncoding(),
+            encoding.FixedPointEncoding(100),
+            encoding.IntegerPackingEncoding(),
+        ]
+        bond_angle_feat = CompressedArray2D(
+            (None, 3, bond_angle_encoding),
+            "int8",
+            mean_shift=protein_constants.BACKBONE_BOND_ANGLES,
+        )
+        features = [
+            # TODO: figure out how to handle the first 'ghost' residue - and why it is needed
+            (
+                "bond_lengths",
+                bond_length_feat,
+            ),  # delta encoded, sparse, ? integer packed maybe
+            ("bond_angles", bond_angle_feat),  # delta encoded, integer packed
+            (
+                "phi",
+                CompressedArray1D((None,), "int8"),
+            ),  # delta encoded, integer packed
+            (
+                "psi",
+                CompressedArray1D((None,), "int8"),
+            ),  # delta encoded, integer packed
+            (
+                "omega",
+                CompressedArray1D((None,), "int8"),
+            ),  # delta encoded, will be stored as sparse
+            residue_identifier,
+            (
+                "chain_id",
+                Array1D((None,), "string"),
+            ),  # TODO: could make Value(string) if load_as == "chain"
+        ]
+        if not self.all_atoms_present:
+            features.append(("atom_name", Array1D((None,), "string")))
+            features.append(("residue_starts", Array1D((None,), "uint32")))
+        if self.with_res_id:
+            features.append(("res_id", Array1D((None,), "uint32")))
+        if self.with_hetero:
+            features.append(("hetero", Array1D((None,), "bool")))
+        if self.with_ins_code:
+            features.append(("ins_code", Array1D((None,), "string")))
+        if self.with_box:
+            features.append(("box", Array2D((3, 3), "float32")))
+        if self.with_bonds:
+            features.append(("bond_edges", Array2D((None, 2), "uint16")))
+            features.append(("bond_types", Array1D((None,), "uint8")))
+        if self.with_occupancy:
+            features.append(("occupancy", Array1D((None,), "float16")))
+        if self.with_b_factor:
+            # TODO: maybe have specific storage format for plddt bfactor (fixed range)
+            features.append(("b_factor", Array1D((None,), self.b_factor_dtype)))
+        if self.with_charge:
+            features.append(("charge", Array1D((None,), "int8")))
+        if self.with_element:
+            features.append(("element", Array1D((None,), "string")))
+        return OrderedDict(
+            features
+        )  # order may not be important due to Features.recursive_reorder
 
     def deserialize(self):
         if isinstance(self.residue_dictionary, dict):

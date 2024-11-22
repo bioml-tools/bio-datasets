@@ -11,7 +11,7 @@ __author__ = "Patrick Kunzmann"
 __all__ = ["ByteArrayEncoding", "FixedPointEncoding",
            "IntervalQuantizationEncoding", "RunLengthEncoding",
            "DeltaEncoding", "IntegerPackingEncoding", "StringArrayEncoding",
-           "TypeCode", "SparseEncoding"]
+           "TypeCode", "SparseEncoding", "SparseTopKEncoding"]
 
 cimport cython
 cimport numpy as np
@@ -24,6 +24,7 @@ import re
 import numpy as np
 from .component import _Component
 from biotite.file import InvalidFileError
+from bio_datasets.np_utils import unique_topk
 
 ctypedef np.int8_t int8
 ctypedef np.int16_t int16
@@ -278,6 +279,10 @@ class FixedPointEncoding(Encoding):
     """
     Lossy encoding that multiplies floating point values with a given
     factor and subsequently rounds them to the nearest integer.
+
+    Factor of 10**(number of decimal places) is a convenient way to set.
+
+    (If data starts in range [0-1]? Factor ends up effectively being 2**bits)
 
     Parameters
     ----------
@@ -593,7 +598,100 @@ class SparseEncoding(Encoding):
         cdef int i, j
         cdef int value, repeat
 
-        length = (data.shape[0] - 1) // 2
+        length = ((data.shape[0] - 1) // 2) + data[0]
+
+        cdef OutputInteger[:] output = np.zeros(
+            length, dtype=np.asarray(output_type).dtype
+        )
+        # Fill output array
+        j = 0
+        for i in range(1, data.shape[0], 2):
+            value = data[i]
+            index = data[i+1]
+            output[index] = value
+        return np.asarray(output)
+
+
+@dataclass
+class SparseTopKEncoding(Encoding):
+    """
+    A generalisation of SparseEncoding that allows for K `zero points`.
+
+    Now the first 2*K elements in the array encode the `zero points`.
+
+    Each zero point is encoded as a pair of (count, value).
+
+    After all zero points, follow remaining (index, value) pairs, as in SparseEncoding.
+
+    TODO: support passing the top k values.
+    TODO: this could be generalised in a fully dynamic way:
+    SparseDynamicTopKEncoding: determine K by some percentage threshold.
+    N.B. works with integer arrays.
+    """
+
+    k: int = 1
+    src_type: ... = None
+    topk_values: List[int] = None
+
+    def __post_init__(self):
+        if self.src_type is not None:
+            self.src_type = TypeCode.from_dtype(self.src_type)
+
+    def encode(self, data):
+        # If not given in constructor, it is determined from the data
+        if self.src_type is None:
+            self.src_type = TypeCode.from_dtype(data.dtype)
+        if self.topk_values is None:
+            assert self.k > 0
+            self.topk_values = unique_topk(data, self.k)
+        return self._encode(_safe_cast(data, self.src_type.to_dtype()))
+
+    def decode(self, data):
+        return self._decode(
+            data, np.empty(0, dtype=self.src_type.to_dtype())
+        )
+
+    def _encode(self, const Integer[:] data):
+        # TODO: optimise?
+        # TODO: handle sparsification and fixed point encoding
+        # Pessimistic allocation of output array: no zeros
+        cdef int32[:] output = np.zeros((data.shape[0] + self.k) * 2, dtype=np.int32)
+        cdef int i=0, j=1, k=0
+        cdef int run_length = 0
+        cdef int curr_val
+        cdef int num_zeros = 0
+        cdef int32[:] topk_value_counts = np.zeros(self.k, dtype=np.int32)
+        for i in range(data.shape[0]):
+            curr_val = data[i]
+
+            for k in range(self.k):
+                if curr_val == self.topk_values[k]:
+                    topk_value_counts[k] += 1
+                    break
+            else:
+                output[j] = curr_val
+                output[j+1] = i
+                j += 2
+
+        for k in range(self.k):
+            raise NotImplementedError()
+
+        # Trim to correct size
+        return np.asarray(output)[:j]
+
+    def _decode(self, const Integer[:] data, OutputInteger[:] output_type):
+        """
+        `output_type` is merely a typed placeholder to allow for static
+        typing of output.
+        """
+        if (data.shape[0] - 1) % 2 != 0:
+            raise ValueError("Invalid sparse encoded data")
+
+        cdef int length = 0
+        cdef int i, j
+        cdef int value, repeat
+
+        length = ((data.shape[0] - 1) // 2) + data[0]
 
         cdef OutputInteger[:] output = np.zeros(
             length, dtype=np.asarray(output_type).dtype
@@ -637,16 +735,79 @@ class ZeroEncoding(Encoding):
     src_type: ... = None
 
     def __post_init__(self):
+        assert self.zero_tol >= 0, "zero_tol must be >= 0"
         if self.src_type is not None:
             self.src_type = TypeCode.from_dtype(self.src_type)
 
     def encode(self, data):
+        # If not given in constructor, it is determined from the data
+        new_data = np.zeros_like(data)
+        if self.src_type is None:
+            self.src_type = TypeCode.from_dtype(data.dtype)
+
         zero_mask = np.abs(data) < self.zero_tol
-        data[zero_mask] = 0
-        return data
+        new_data[~zero_mask] = data[~zero_mask]
+        return new_data
 
     def decode(self, data):
         return _safe_cast(data, self.src_type.to_dtype())
+
+
+@dataclass
+class FloatDeltaEncoding(Encoding):
+    """
+    Encoding that encodes an array of floats into an array of
+    consecutive differences.
+
+    Parameters
+    ----------
+    src_type : dtype or TypeCode, optional
+        The data type of the array to be encoded.
+        Either a NumPy dtype or a *BinaryCIF* type code is accepted.
+        The dtype must be a integer type.
+        If omitted, the data type is taken from the data the
+        first time :meth:`encode()` is called.
+    origin : int, optional
+        The starting value from which the differences are calculated.
+        If omitted, the value is taken from the first array element the
+        first time :meth:`encode()` is called.
+
+    Attributes
+    ----------
+    src_type : TypeCode
+    origin : float
+
+    Examples
+    --------
+
+    >>> data = np.array([1, 1, 2, 3, 5, 8])
+    >>> encoding = DeltaEncoding()
+    >>> print(encoding.encode(data))
+    [0 0 1 1 2 3]
+    >>> print(encoding.origin)
+    1
+    """
+    src_type: ... = None
+    origin: ... = None
+
+    def __post_init__(self):
+        if self.src_type is not None:
+            self.src_type = TypeCode.from_dtype(self.src_type)
+
+    def encode(self, data):
+        # If not given in constructor, it is determined from the data
+        if self.src_type is None:
+            self.src_type = TypeCode.from_dtype(data.dtype)
+        if self.origin is None:
+            self.origin = data[0]
+
+        data = data - self.origin
+        return np.diff(data, prepend=0)
+
+    def decode(self, data):
+        output = np.cumsum(data, dtype=self.src_type.to_dtype())
+        output += self.origin
+        return output
 
 
 @dataclass
@@ -1029,7 +1190,8 @@ _encoding_classes = {
     "Delta": DeltaEncoding,
     "IntegerPacking": IntegerPackingEncoding,
     "StringArray": StringArrayEncoding,
-    "SparseEncoding": SparseEncoding,
+    "Sparse": SparseEncoding,
+    "SparseTopK": SparseTopKEncoding,
 }
 _encoding_classes_kinds = {
     "ByteArrayEncoding": "ByteArray",
@@ -1040,6 +1202,8 @@ _encoding_classes_kinds = {
     "IntegerPackingEncoding": "IntegerPacking",
     "StringArrayEncoding": "StringArray",
     "SparseEncoding": "Sparse",
+    "SparseTopKEncoding": "SparseTopK",
+    "ZeroEncoding": "Zero",
 }
 
 
