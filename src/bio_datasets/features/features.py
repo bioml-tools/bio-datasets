@@ -103,6 +103,7 @@ class CustomFeature:
 # class CompositeFeature(CustomFeature):
 #     def __call__(self):
 
+
 def _safe_cast(array, dtype):
     dtype = np.dtype(dtype)
     if dtype == array.dtype:
@@ -121,6 +122,10 @@ class _CompressedArrayXD(CustomFeature):
     """
     A feature that stores a compressed 1D array, with a specified sequence of compression schemes.
     To store multidimensional arrays, store each dimension separately.
+
+    TODO: be careful / write tests for behaviour relating to the fact that in biotite
+    encodings have array-level attributes (like src_dtype) - this is often necessary
+    for decoding, and should be passed to init. We can assert this externally after init.
 
     N.B. arrow handles flattening.
 

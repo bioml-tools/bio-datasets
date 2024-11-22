@@ -11,7 +11,7 @@ __author__ = "Patrick Kunzmann"
 __all__ = ["ByteArrayEncoding", "FixedPointEncoding",
            "IntervalQuantizationEncoding", "RunLengthEncoding",
            "DeltaEncoding", "IntegerPackingEncoding", "StringArrayEncoding",
-           "TypeCode"]
+           "TypeCode", "SparseEncoding"]
 
 cimport cython
 cimport numpy as np
@@ -525,16 +525,8 @@ class RunLengthEncoding(Encoding):
 @dataclass
 class SparseEncoding(Encoding):
     """
-    Encoding that compresses sparse arrays into (index, value) pairs.
+    Encoding that compresses sparse integer arrays into (index, value) pairs.
 
-    TODO: maybe combine with RunLengthEncoding
-
-    Parameters
-    ----------
-    fpe_factor: float
-        factor used to determine FixedPointEncoding for non-zero
-    zero_tol: float
-        used to determine threshold for zeros
     src_type : dtype or TypeCode, optional
         The data type of the array to be encoded.
         Either a NumPy dtype or a *BinaryCIF* type code is accepted.
@@ -544,44 +536,23 @@ class SparseEncoding(Encoding):
 
     Attributes
     ----------
-    fpe_factor: float
-    zero_tol: float
     src_type : TypeCode
 
     Examples
     --------
 
-    >>> data = np.array([1, 1, 1, 5, 3, 3])
-    >>> print(data)
-    [1 1 1 5 3 3]
-    >>> encoded = RunLengthEncoding().encode(data)
-    >>> print(encoded)
-    [1 3 5 1 3 2]
-    >>> # Emphasize the the pairs
-    >>> print(encoded.reshape(-1, 2))
-    [[1 3]
-     [5 1]
-     [3 2]]
+    # TODO
     """
-    fpe_factor: float
-    zero_tol: float
     src_type: ... = None
 
     def __post_init__(self):
         if self.src_type is not None:
             self.src_type = TypeCode.from_dtype(self.src_type)
-        self._fpe = FixedPointEncoding(self.fpe_factor, self.src_type)
 
     def encode(self, data):
         # If not given in constructor, it is determined from the data
         if self.src_type is None:
             self.src_type = TypeCode.from_dtype(data.dtype)
-        if self.src_size is None:
-            self.src_size = data.shape[0]
-        elif self.src_size != data.shape[0]:
-            raise IndexError(
-                "Given source size does not match actual data size"
-            )
         return self._encode(_safe_cast(data, self.src_type.to_dtype()))
 
     def decode(self, data):
@@ -594,17 +565,19 @@ class SparseEncoding(Encoding):
         # Pessimistic allocation of output array: no zeros
         cdef int32[:] output = np.zeros(data.shape[0] * 2 + 1, dtype=np.int32)
         cdef int i=0, j=1
-        cdef int val = data[0]
         cdef int run_length = 0
         cdef int curr_val
-        output[0] = (data == 0).sum()  # encode num zeros
+        cdef int num_zeros = 0
         for i in range(data.shape[0]):
             curr_val = data[i]
             if curr_val != 0:
                 # New element -> Write element with run-length
-                output[j] = val
+                output[j] = curr_val
                 output[j+1] = i
                 j += 2
+            else:
+                num_zeros += 1
+        output[0] = num_zeros  # encode num zeros
         # Trim to correct size
         return np.asarray(output)[:j]
 
@@ -632,6 +605,48 @@ class SparseEncoding(Encoding):
             index = data[i+1]
             output[index] = value
         return np.asarray(output)
+
+
+@dataclass
+class ZeroEncoding(Encoding):
+    """
+    Lossy encoding that replaces near zero values with zero: useful in combination with SparseEncoding.
+
+    Parameters
+    ----------
+    zero_tol: float
+        used to determine threshold for zeros
+    src_type : dtype or TypeCode, optional
+        The data type of the array to be encoded.
+        Either a NumPy dtype or a *BinaryCIF* type code is accepted.
+        The dtype must be a integer type.
+        If omitted, the data type is taken from the data the
+        first time :meth:`encode()` is called.
+
+    Attributes
+    ----------
+    zero_tol: float
+    src_type : TypeCode
+
+    Examples
+    --------
+
+    # TODO
+    """
+    zero_tol: float = 0.0001
+    src_type: ... = None
+
+    def __post_init__(self):
+        if self.src_type is not None:
+            self.src_type = TypeCode.from_dtype(self.src_type)
+
+    def encode(self, data):
+        zero_mask = np.abs(data) < self.zero_tol
+        data[zero_mask] = 0
+        return data
+
+    def decode(self, data):
+        return _safe_cast(data, self.src_type.to_dtype())
 
 
 @dataclass
@@ -1014,6 +1029,7 @@ _encoding_classes = {
     "Delta": DeltaEncoding,
     "IntegerPacking": IntegerPackingEncoding,
     "StringArray": StringArrayEncoding,
+    "SparseEncoding": SparseEncoding,
 }
 _encoding_classes_kinds = {
     "ByteArrayEncoding": "ByteArray",
@@ -1023,6 +1039,7 @@ _encoding_classes_kinds = {
     "DeltaEncoding": "Delta",
     "IntegerPackingEncoding": "IntegerPacking",
     "StringArrayEncoding": "StringArray",
+    "SparseEncoding": "Sparse",
 }
 
 

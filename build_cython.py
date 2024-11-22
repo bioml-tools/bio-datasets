@@ -1,4 +1,7 @@
-"""Compile the Cython code for the encoding module in place to support editable installs."""
+"""Compile the Cython code for the encoding module in place to support editable installs.
+
+N.B. delete the build directory before running this.
+"""
 
 import glob
 import os
@@ -9,6 +12,17 @@ from distutils.core import Distribution
 import numpy
 from Cython.Build import cythonize
 from setuptools import Extension
+
+if os.path.exists("build"):
+    raise FileExistsError("build directory already exists")
+
+#### also delete target paths
+cfile = "src/bio_datasets/structure/pdbx/encoding.c"
+if os.path.exists(cfile):
+    os.remove(cfile)
+so_files = glob.glob("src/bio_datasets/structure/pdbx/encoding*.so")
+for f in so_files:
+    os.remove(f)
 
 # Define the extension
 extensions = [
