@@ -36,8 +36,8 @@ from datasets.features.features import (
 )
 from datasets.utils.py_utils import zip_dict
 
-from bio_datasets.structure.pdbx import BinaryCIFData, compress, encoding
-from bio_datasets.structure.pdbx.bcif import _encode_numpy as encode_numpy
+from biotite.structure.io.pdbx import BinaryCIFData, compress, encoding
+from biotite.structure.io.pdbx.bcif import _encode_numpy as encode_numpy
 
 
 array_extension_types = {
@@ -121,9 +121,10 @@ def _safe_cast(array, dtype):
     return array.astype(dtype)
 
 
-# TODO: maybe restore support for XD - if ok for non-encoding byte packing
+# TODO: maybe restore support for XD - if ok for non-encoding byte packing? but weird for encoding
+# methods to operate on 2d arrays - so may require extension type...
 @dataclass
-class _CompressedArray1D(CustomFeature):
+class CompressedArray1D(CustomFeature):
     """
     A feature that stores a compressed 1D array, with a specified sequence of compression schemes.
     To store multidimensional arrays, store each dimension separately.

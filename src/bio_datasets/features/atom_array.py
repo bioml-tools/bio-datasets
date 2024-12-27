@@ -17,6 +17,8 @@ import pyarrow as pa
 from biotite import structure as bs
 from biotite.structure.filter import filter_amino_acids
 from biotite.structure.io.pdb import PDBFile
+from biotite.structure.io import pdbx
+from biotite.structure.io.pdbx import encoding
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Array2D, config
 from datasets.download import DownloadConfig
@@ -26,18 +28,16 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
-from bio_datasets.features.features import CompressedArray1D, CompressedArray2D
+from bio_datasets.features.features import CompressedArray1D
 from bio_datasets.structure import (
     Biomolecule,
     BiomoleculeChain,
     BiomoleculeComplex,
     parsing,
-    pdbx,
 )
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
 )
-from bio_datasets.structure.pdbx import encoding
 from bio_datasets.structure.protein import (
     ProteinChain,
     ProteinComplex,
