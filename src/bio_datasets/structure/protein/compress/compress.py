@@ -6,6 +6,7 @@ import msgpack
 import biotite.structure as bs
 from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein.internal_coordinates import get_backbone_internals
+from bio_datasets.structure.protein.compress.encoding import HistogramEncoding
 from biotite.structure.io.pdbx import encoding
 
 
@@ -93,6 +94,20 @@ class ProteinBackboneCompressor(Compressor):
         # TODO: is this a jax or numpy array?
         # N, CA, C
         return xyz_reconstructed
+
+
+def load_bb_histogram_compressor(path_to_lib):
+    """Library should be a dict of arrays saved in npz format, e.g. the output of scripts/build_foldcomp_histogram_library.py.
+    """
+    lib = np.load(path_to_lib)
+    bond_length_encoders = [HistogramEncoding.from_library(lib[f"bond_lengths_{i}"], lib[f"bond_length_edges_{i}"]) for i in range(3)]
+    bond_angle_encoders = [HistogramEncoding.from_library(lib[f"bond_angles_{i}"], lib[f"bond_angle_edges_{i}"]) for i in range(3)]
+    dihedral_encoders = [HistogramEncoding.from_library(lib[f"dihedrals_{i}"], lib[f"dihedral_edges_{i}"]) for i in range(3)]
+    return ProteinBackboneCompressor(
+        bond_length_encoders=bond_length_encoders,
+        bond_angle_encoders=bond_angle_encoders,
+        dihedral_encoders=dihedral_encoders,
+    )
 
 
 # class ProteinStructureCompressor:

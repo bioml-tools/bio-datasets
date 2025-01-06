@@ -1,3 +1,8 @@
+"""For bond lengths and bond angles, we infer the range of allowed values from the dataset.
+
+For dihedrals, we use -pi to pi as the allowable range.
+"""
+
 import argparse
 import io
 import itertools
@@ -10,6 +15,7 @@ import tqdm
 import numpy as np
 from bio_datasets import load_dataset
 from bio_datasets.structure.protein import ProteinChain, ProteinComplex
+from bio_datasets.structure.protein.constants import BACKBONE_BOND_LENGTHS
 from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein.internal_coordinates import get_backbone_internals_from_atoms
 
@@ -31,7 +37,7 @@ def build_foldcomp_library(
             all_bond_lengths.append(bond_lengths)
             all_bond_angles.append(bond_angles)
             all_dihedrals.append(dihedrals)
-    return all_bond_lengths, all_bond_angles, all_dihedrals
+    return np.concatenate(all_bond_lengths, axis=0), np.concatenate(all_bond_angles, axis=0), np.concatenate(all_dihedrals, axis=0)
 
 
 def build_biodataset_library(
@@ -52,10 +58,11 @@ def build_biodataset_library(
         else:
             raise ValueError(f"Unknown structure type: {type(example['structure'])}")
         bond_lengths, bond_angles, dihedrals = get_backbone_internals_from_atoms(atoms)
+        # [L, 3], [L, 3], [L, 3]
         all_bond_lengths.append(bond_lengths)
         all_bond_angles.append(bond_angles)
         all_dihedrals.append(dihedrals)
-    return all_bond_lengths, all_bond_angles, all_dihedrals
+    return np.concatenate(all_bond_lengths, axis=0), np.concatenate(all_bond_angles, axis=0), np.concatenate(all_dihedrals, axis=0)
 
 
 def main(args):
@@ -67,9 +74,9 @@ def main(args):
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
     histogram_library = {}
     for i in range(3):
-        histogram_library[f"bond_lengths_{i}"] = np.histogram(all_bond_lengths[i], bins=2**args.bond_length_bits)
-        histogram_library[f"bond_angles_{i}"] = np.histogram(all_bond_angles[i], bins=2**args.bond_angle_bits)
-        histogram_library[f"dihedrals_{i}"] = np.histogram(all_dihedrals[i], bins=2**args.dihedral_bits)
+        histogram_library[f"bond_lengths_{i}"], histogram_library[f"bond_length_edges_{i}"] = np.histogram(all_bond_lengths[:, i], bins=2**args.bond_length_bits, density=False)
+        histogram_library[f"bond_angles_{i}"], histogram_library[f"bond_angle_edges_{i}"] = np.histogram(all_bond_angles[:, i], bins=2**args.bond_angle_bits, density=False)
+        histogram_library[f"dihedrals_{i}"], histogram_library[f"dihedral_edges_{i}"] = np.histogram(all_dihedrals[:, i], bins=2**args.dihedral_bits, range=(-np.pi, np.pi), density=False)
     # I guess we should save as a numpy array
     np.savez(args.output_file, **histogram_library)
 

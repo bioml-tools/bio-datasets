@@ -79,8 +79,12 @@ class BinEncoding:
 
 @dataclass
 class HuffmanEncoding:
-    """Encoding of integer array using Huffman coding."""
-    probs: Optional[list[float]] = None
+    """Encoding of integer array using Huffman coding.
+
+    Huffman coding in bitarray operates on a dictionary mapping tokens to their frequency counts
+    https://github.com/ilanschnell/bitarray/blob/ff855c4509eb8028c622a79db7882372188618bc/examples/huffman/efficiency.py#L29
+    """
+    counts: Optional[list[int]] = None
     num_bins: Optional[int] = None  # we assume that bin indices are 0, 1, ..., num_bins - 1
     return_bool: bool = False  # if True, return bools, otherwise return bytes
 
@@ -89,17 +93,10 @@ class HuffmanEncoding:
         self._code = None
         self._decodetree = None
 
-    @staticmethod
-    def compute_bin_probs(data: np.ndarray, num_bins: int) -> list[float]:
-        values, counts = np.unique(data, return_counts=True)
-        probs = np.zeros(num_bins)
-        probs[values] = counts / counts.sum()
-        return probs
-
     @property
     def code(self):
         if self._code is None:
-            self._code = huffman_code({i: p for i, p in enumerate(self.probs)})
+            self._code = huffman_code({i: p for i, p in enumerate(self.counts)})
         return self._code
 
     @property
@@ -111,8 +108,8 @@ class HuffmanEncoding:
     def encode(self, data: np.ndarray) -> bytes | np.ndarray:
         if self.num_bins is None:
             self.num_bins = data.max() + 1
-        if self.probs is None:
-            self.probs = self.compute_bin_probs(data, self.num_bins)
+        if self.counts is None:
+            raise NotImplementedError()
 
         b = bitarray()
         b.encode(self.code, data)
@@ -152,9 +149,15 @@ class HistogramEncoding:
     ):
         # having exact bounds is awkward for digitize - we'll just add a small buffer
         range = (low, high) if low is not None and high is not None else (data.min() - 0.0001, data.max() + 0.0001)
-        probs, bins = np.histogram(data, bins=num_bins, range=range, density=True)
+        counts, bins = np.histogram(data, bins=num_bins, range=range, density=False)
         bin_encoding = BinEncoding(list(bins))
-        huffman_encoding = HuffmanEncoding(list(probs), len(probs), return_bool=return_bool)
+        huffman_encoding = HuffmanEncoding(list(counts), len(counts), return_bool=return_bool)
+        return cls(bin_encoding, huffman_encoding)
+
+    @classmethod
+    def from_library(cls, counts, bin_edges, return_bool: bool = False):
+        bin_encoding = BinEncoding(list(bin_edges))
+        huffman_encoding = HuffmanEncoding(list(counts), len(counts), return_bool=return_bool)
         return cls(bin_encoding, huffman_encoding)
 
     def encode(self, data: np.ndarray) -> bytes | np.ndarray:
