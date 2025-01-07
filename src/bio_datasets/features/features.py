@@ -4,12 +4,14 @@ Custom features for bio datasets.
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
 import json
-import msgpack
 from dataclasses import dataclass, field
 from typing import ClassVar, Dict, List, Optional, Union
 
+import msgpack
 import numpy as np
 import pyarrow as pa
+from biotite.structure.io.pdbx import BinaryCIFData, compress, encoding
+from biotite.structure.io.pdbx.bcif import _encode_numpy as encode_numpy
 from datasets.features.features import (
     Array1DExtensionType,
     Array2DExtensionType,
@@ -32,13 +34,9 @@ from datasets.features.features import (
     generate_from_arrow_type,
     register_feature,
     require_decoding,
-    string_to_arrow
+    string_to_arrow,
 )
 from datasets.utils.py_utils import zip_dict
-
-from biotite.structure.io.pdbx import BinaryCIFData, compress, encoding
-from biotite.structure.io.pdbx.bcif import _encode_numpy as encode_numpy
-
 
 array_extension_types = {
     "Array1D": Array1DExtensionType,
@@ -213,7 +211,9 @@ class CompressedArray1D(CustomFeature):
             encoded = encoding.encode_stepwise(example, encoding_list)
             # c.f. compress._data_size_in_file; BinaryCIFData.serialize
             if not isinstance(encoded, bytes):
-                raise ValueError("Final encoding must return 'bytes' if packing encoding metadata")
+                raise ValueError(
+                    "Final encoding must return 'bytes' if packing encoding metadata"
+                )
             serialized_encoding = [enc.serialize() for enc in self._encoding]
             serialized_content = {"data": encoded, "encoding": serialized_encoding}
             packed_bytes = msgpack.packb(

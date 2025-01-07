@@ -15,7 +15,6 @@ import tqdm
 import numpy as np
 from bio_datasets import load_dataset
 from bio_datasets.structure.protein import ProteinChain, ProteinComplex
-from bio_datasets.structure.protein.constants import BACKBONE_BOND_LENGTHS
 from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein.internal_coordinates import get_backbone_internals_from_atoms
 

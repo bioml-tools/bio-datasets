@@ -16,8 +16,8 @@ import numpy as np
 import pyarrow as pa
 from biotite import structure as bs
 from biotite.structure.filter import filter_amino_acids
-from biotite.structure.io.pdb import PDBFile
 from biotite.structure.io import pdbx
+from biotite.structure.io.pdb import PDBFile
 from biotite.structure.io.pdbx import encoding
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Array2D, config

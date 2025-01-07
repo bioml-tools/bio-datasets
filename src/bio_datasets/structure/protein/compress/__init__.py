@@ -1,9 +1,14 @@
-__all__ = ["ProteinBackboneCompressor", "HistogramEncoding", "HuffmanEncoding", "BinEncoding"]
+__all__ = [
+    "ProteinBackboneCompressor",
+    "HistogramEncoding",
+    "HuffmanEncoding",
+    "BinEncoding",
+]
 
 from biotite.structure.io.pdbx import encoding as biotite_encoding
-from .encoding import HistogramEncoding, HuffmanEncoding, BinEncoding
-from .compress import ProteinBackboneCompressor
 
+from .compress import ProteinBackboneCompressor
+from .encoding import BinEncoding, HistogramEncoding, HuffmanEncoding
 
 biotite_encoding._encoding_classes["Histogram"] = HistogramEncoding
 biotite_encoding._encoding_classes_kinds["HistogramEncoding"] = "Histogram"

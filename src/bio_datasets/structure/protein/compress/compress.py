@@ -1,13 +1,15 @@
 import io
-import numpy as np
 from dataclasses import dataclass
-import nerfax
-import msgpack
+
 import biotite.structure as bs
-from bio_datasets.structure.parsing import load_structure
-from bio_datasets.structure.protein.internal_coordinates import get_backbone_internals
-from bio_datasets.structure.protein.compress.encoding import HistogramEncoding
+import msgpack
+import nerfax
+import numpy as np
 from biotite.structure.io.pdbx import encoding
+
+from bio_datasets.structure.parsing import load_structure
+from bio_datasets.structure.protein.compress.encoding import HistogramEncoding
+from bio_datasets.structure.protein.internal_coordinates import get_backbone_internals
 
 
 @dataclass
@@ -37,13 +39,19 @@ class ProteinBackboneCompressor(Compressor):
     We can pass an argument to decompress to control whether we return the internals or the atoms.
     TODO: option to return the bins...
     """
+
     def __init__(
         self,
         bond_length_encoders: list[list[encoding.Encoding]],
         bond_angle_encoders: list[list[encoding.Encoding]],
         dihedral_encoders: list[list[encoding.Encoding]],
     ):
-        assert len(bond_length_encoders) == len(bond_angle_encoders) == len(dihedral_encoders) == 3
+        assert (
+            len(bond_length_encoders)
+            == len(bond_angle_encoders)
+            == len(dihedral_encoders)
+            == 3
+        )
         self.bond_length_encoders = bond_length_encoders
         self.bond_angle_encoders = bond_angle_encoders
         self.dihedral_encoders = dihedral_encoders
@@ -51,9 +59,18 @@ class ProteinBackboneCompressor(Compressor):
     @classmethod
     def deserialize(cls, serialized_encoders: list[dict]):
         """Similar to biotite.structure.io.pdbx.BinaryCIFData.deserialize"""
-        bond_length_encoders = [encoding.deserialize_encoding(enc) for enc in serialized_encoders["bond_length"]]
-        bond_angle_encoders = [encoding.deserialize_encoding(enc) for enc in serialized_encoders["bond_angle"]]
-        dihedral_encoders = [encoding.deserialize_encoding(enc) for enc in serialized_encoders["dihedral"]]
+        bond_length_encoders = [
+            encoding.deserialize_encoding(enc)
+            for enc in serialized_encoders["bond_length"]
+        ]
+        bond_angle_encoders = [
+            encoding.deserialize_encoding(enc)
+            for enc in serialized_encoders["bond_angle"]
+        ]
+        dihedral_encoders = [
+            encoding.deserialize_encoding(enc)
+            for enc in serialized_encoders["dihedral"]
+        ]
         return cls(bond_length_encoders, bond_angle_encoders, dihedral_encoders)
 
     def serialize(self) -> dict[str, list[dict]]:
@@ -63,7 +80,9 @@ class ProteinBackboneCompressor(Compressor):
             "dihedral": [enc.serialize() for enc in self.dihedral_encoders],
         }
 
-    def compress_internals(self, bond_lengths: np.ndarray, bond_angles: np.ndarray, dihedrals: np.ndarray) -> bytes:
+    def compress_internals(
+        self, bond_lengths: np.ndarray, bond_angles: np.ndarray, dihedrals: np.ndarray
+    ) -> bytes:
         encoded = {}
         for i in range(3):
             encoded[f"B{i}"] = self.bond_length_encoders[i].encode(bond_lengths[:, i])
@@ -77,19 +96,33 @@ class ProteinBackboneCompressor(Compressor):
         bond_lengths, bond_angles, dihedrals = internals
         return self.compress_internals(bond_lengths, bond_angles, dihedrals)
 
-    def decompress_internals(self, data: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def decompress_internals(
+        self, data: bytes
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Decompress a byte string into internals."""
         decoded = msgpack.unpackb(data, raw=False)
-        bond_lengths = np.stack([self.bond_length_encoders[i].decode(decoded[f"B{i}"]) for i in range(3)], axis=-1)
-        bond_angles = np.stack([self.bond_angle_encoders[i].decode(decoded[f"A{i}"]) for i in range(3)], axis=-1)
-        dihedrals = np.stack([self.dihedral_encoders[i].decode(decoded[f"D{i}"]) for i in range(3)], axis=-1)
+        bond_lengths = np.stack(
+            [self.bond_length_encoders[i].decode(decoded[f"B{i}"]) for i in range(3)],
+            axis=-1,
+        )
+        bond_angles = np.stack(
+            [self.bond_angle_encoders[i].decode(decoded[f"A{i}"]) for i in range(3)],
+            axis=-1,
+        )
+        dihedrals = np.stack(
+            [self.dihedral_encoders[i].decode(decoded[f"D{i}"]) for i in range(3)],
+            axis=-1,
+        )
         return bond_lengths, bond_angles, dihedrals
 
     def decompress(self, data: bytes) -> np.ndarray:
         """Decompress a byte string into an array of N, CA, C coordinates."""
         bond_lengths, bond_angles, dihedrals = self.decompress_internals(data)
         xyz_reconstructed = nerfax.reconstruct.reconstruct_from_internal_coordinates(
-            bond_lengths, bond_angles, dihedrals, mode="fully_sequential"  # i think this mode is cpu-optimised
+            bond_lengths,
+            bond_angles,
+            dihedrals,
+            mode="fully_sequential",  # i think this mode is cpu-optimised
         )
         # TODO: is this a jax or numpy array?
         # N, CA, C
@@ -97,12 +130,26 @@ class ProteinBackboneCompressor(Compressor):
 
 
 def load_bb_histogram_compressor(path_to_lib):
-    """Library should be a dict of arrays saved in npz format, e.g. the output of scripts/build_foldcomp_histogram_library.py.
-    """
+    """Library should be a dict of arrays saved in npz format, e.g. the output of scripts/build_foldcomp_histogram_library.py."""
     lib = np.load(path_to_lib)
-    bond_length_encoders = [HistogramEncoding.from_library(lib[f"bond_lengths_{i}"], lib[f"bond_length_edges_{i}"]) for i in range(3)]
-    bond_angle_encoders = [HistogramEncoding.from_library(lib[f"bond_angles_{i}"], lib[f"bond_angle_edges_{i}"]) for i in range(3)]
-    dihedral_encoders = [HistogramEncoding.from_library(lib[f"dihedrals_{i}"], lib[f"dihedral_edges_{i}"]) for i in range(3)]
+    bond_length_encoders = [
+        HistogramEncoding.from_library(
+            lib[f"bond_lengths_{i}"], lib[f"bond_length_edges_{i}"]
+        )
+        for i in range(3)
+    ]
+    bond_angle_encoders = [
+        HistogramEncoding.from_library(
+            lib[f"bond_angles_{i}"], lib[f"bond_angle_edges_{i}"]
+        )
+        for i in range(3)
+    ]
+    dihedral_encoders = [
+        HistogramEncoding.from_library(
+            lib[f"dihedrals_{i}"], lib[f"dihedral_edges_{i}"]
+        )
+        for i in range(3)
+    ]
     return ProteinBackboneCompressor(
         bond_length_encoders=bond_length_encoders,
         bond_angle_encoders=bond_angle_encoders,
@@ -134,7 +181,7 @@ def load_bb_histogram_compressor(path_to_lib):
 #             atoms = data
 #         else:
 #             raise ValueError(f"Invalid input type: {type(data)}")
-        
+
 #         n_atoms = atoms[atoms.atom_name == "N"]
 #         ca_atoms = atoms[atoms.atom_name == "CA"]
 #         c_atoms = atoms[atoms.atom_name == "C"]
@@ -162,6 +209,6 @@ def load_bb_histogram_compressor(path_to_lib):
 class NullEncoding:
     def encode(self, arr):
         return arr
-    
+
     def decode(self, arr):
         return arr

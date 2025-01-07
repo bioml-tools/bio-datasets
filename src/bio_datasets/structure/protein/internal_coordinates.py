@@ -12,18 +12,12 @@ n.b. backbone dihedrals involve previous residue atoms
 import jax
 import nerfax
 import numpy as np
-from biotite.structure.geometry import dihedral
-from bio_datasets.structure.protein import constants as protein_constants
 from biotite import structure as bs
+from biotite.structure.geometry import dihedral
 from biotite.structure.util import coord_for_atom_name_per_residue
 
-
-def load_backbone_coord_array(structure: bs.AtomArray):
-    xyz = np.stack(
-        [structure[structure.atom_name == at].coord for at in ["N", "CA", "C"]],
-        axis=1,
-    )  # L, 3, 3 -> Lx3, 3
-    return xyz
+from bio_datasets.structure.protein import constants as protein_constants
+from bio_datasets.structure.protein.utils import load_backbone_coord_array
 
 
 def get_backbone_internals(backbone_coords: np.ndarray):
@@ -31,7 +25,9 @@ def get_backbone_internals(backbone_coords: np.ndarray):
         nerfax.parser.insert_zero(backbone_coords).reshape((-1, 3))
     )
     angles = angles.at[0, 0].set(1.0)  # (Dummy non-zero angle required)
-    lengths = lengths.at[0, 0].set(lengths.at[1, 0].get())  # (Dummy initial bond length)
+    lengths = lengths.at[0, 0].set(
+        lengths.at[1, 0].get()
+    )  # (Dummy initial bond length)
     return jax.device_get(lengths), jax.device_get(angles), jax.device_get(torsions)
 
 
@@ -48,7 +44,10 @@ def get_sidechain_internals_list(structure: bs.AtomArray) -> list:
     # if we implement this, we have to also implement ordering returned dihedrals in original order.
     for res in bs.residue_iter(structure):
         chi_atoms_list = protein_constants.chi_angles_atoms[res.res_name[0]]
-        chis = [dihedral(*coord_for_atom_name_per_residue(res, atom_list))[0] for atom_list in chi_atoms_list]
+        chis = [
+            dihedral(*coord_for_atom_name_per_residue(res, atom_list))[0]
+            for atom_list in chi_atoms_list
+        ]
         residue_torsions.append(chis)
     return residue_torsions
 
@@ -61,9 +60,21 @@ def get_sidechain_internals(structure: bs.AtomArray) -> np.ndarray:
     chi_mask = np.zeros((len(res_names), 4), dtype=bool)
     for res_name in unique_res_names:
         res_mask = res_names == res_name
-        chi_ids = np.argwhere(protein_constants.chi_angles_mask[protein_constants.restype_order[protein_constants.restype_3to1[res_name]]]).flatten()
+        chi_ids = np.argwhere(
+            protein_constants.chi_angles_mask[
+                protein_constants.restype_order[
+                    protein_constants.restype_3to1[res_name]
+                ]
+            ]
+        ).flatten()
         assert len(chi_ids) == len(protein_constants.chi_angles_atoms[res_name])
-        for chi_id, chi_atom_list in zip(chi_ids, protein_constants.chi_angles_atoms[res_name]):
-            chi_array[res_mask, chi_id] = dihedral(*coord_for_atom_name_per_residue(structure[structure.res_name == res_name], chi_atom_list))
+        for chi_id, chi_atom_list in zip(
+            chi_ids, protein_constants.chi_angles_atoms[res_name]
+        ):
+            chi_array[res_mask, chi_id] = dihedral(
+                *coord_for_atom_name_per_residue(
+                    structure[structure.res_name == res_name], chi_atom_list
+                )
+            )
             chi_mask[res_mask, chi_id] = True
     return chi_array, chi_mask
