@@ -6,7 +6,6 @@ __all__ = [
     "ProteinChain",
     "ProteinComplex",
     "ProteinDictionary",
-    "ProteinBackboneCompressor",
     "DNAChain",
     "RNAChain",
     "ResidueDictionary",
@@ -17,7 +16,6 @@ from .chemical import SmallMolecule
 from .complex import BiomoleculeComplex
 from .nucleic import DNAChain, RNAChain
 from .protein import (
-    ProteinBackboneCompressor,
     ProteinChain,
     ProteinComplex,
     ProteinDictionary,
