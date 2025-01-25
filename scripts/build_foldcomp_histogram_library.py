@@ -11,17 +11,18 @@ from typing import Optional
 
 import biotite.structure as bs
 import foldcomp
-import tqdm
 import numpy as np
+import tqdm
+
 from bio_datasets import load_dataset
-from bio_datasets.structure.protein import ProteinChain, ProteinComplex
 from bio_datasets.structure.parsing import load_structure
-from bio_datasets.structure.protein.internal_coordinates import get_backbone_internals_from_atoms
+from bio_datasets.structure.protein import ProteinChain, ProteinComplex
+from bio_datasets.structure.protein.internal_coordinates import (
+    get_backbone_internals_from_atoms,
+)
 
 
-def build_foldcomp_library(
-    db_file, max_examples: Optional[int] = None
-):
+def build_foldcomp_library(db_file, max_examples: Optional[int] = None):
     assert os.path.exists(db_file)
     all_bond_lengths = []
     all_bond_angles = []
@@ -32,11 +33,17 @@ def build_foldcomp_library(
             atoms = load_structure(
                 io.StringIO(pdb_str), file_type="pdb", extra_fields=["b_factor"]
             )
-            bond_lengths, bond_angles, dihedrals = get_backbone_internals_from_atoms(atoms)
+            bond_lengths, bond_angles, dihedrals = get_backbone_internals_from_atoms(
+                atoms
+            )
             all_bond_lengths.append(bond_lengths)
             all_bond_angles.append(bond_angles)
             all_dihedrals.append(dihedrals)
-    return np.concatenate(all_bond_lengths, axis=0), np.concatenate(all_bond_angles, axis=0), np.concatenate(all_dihedrals, axis=0)
+    return (
+        np.concatenate(all_bond_lengths, axis=0),
+        np.concatenate(all_bond_angles, axis=0),
+        np.concatenate(all_dihedrals, axis=0),
+    )
 
 
 def build_biodataset_library(
@@ -61,21 +68,47 @@ def build_biodataset_library(
         all_bond_lengths.append(bond_lengths)
         all_bond_angles.append(bond_angles)
         all_dihedrals.append(dihedrals)
-    return np.concatenate(all_bond_lengths, axis=0), np.concatenate(all_bond_angles, axis=0), np.concatenate(all_dihedrals, axis=0)
+    return (
+        np.concatenate(all_bond_lengths, axis=0),
+        np.concatenate(all_bond_angles, axis=0),
+        np.concatenate(all_dihedrals, axis=0),
+    )
 
 
 def main(args):
     if args.dataset_type == "foldcomp":
-        all_bond_lengths, all_bond_angles, all_dihedrals = build_foldcomp_library(args.dataset_name, args.max_examples)
+        all_bond_lengths, all_bond_angles, all_dihedrals = build_foldcomp_library(
+            args.dataset_name, args.max_examples
+        )
     elif args.dataset_type == "biodataset":
-        all_bond_lengths, all_bond_angles, all_dihedrals = build_biodataset_library(args.dataset_name, args.max_examples)
+        all_bond_lengths, all_bond_angles, all_dihedrals = build_biodataset_library(
+            args.dataset_name, args.max_examples
+        )
     else:
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
     histogram_library = {}
     for i in range(3):
-        histogram_library[f"bond_lengths_{i}"], histogram_library[f"bond_length_edges_{i}"] = np.histogram(all_bond_lengths[:, i], bins=2**args.bond_length_bits, density=False)
-        histogram_library[f"bond_angles_{i}"], histogram_library[f"bond_angle_edges_{i}"] = np.histogram(all_bond_angles[:, i], bins=2**args.bond_angle_bits, density=False)
-        histogram_library[f"dihedrals_{i}"], histogram_library[f"dihedral_edges_{i}"] = np.histogram(all_dihedrals[:, i], bins=2**args.dihedral_bits, range=(-np.pi, np.pi), density=False)
+        (
+            histogram_library[f"bond_lengths_{i}"],
+            histogram_library[f"bond_length_edges_{i}"],
+        ) = np.histogram(
+            all_bond_lengths[:, i], bins=2**args.bond_length_bits, density=False
+        )
+        (
+            histogram_library[f"bond_angles_{i}"],
+            histogram_library[f"bond_angle_edges_{i}"],
+        ) = np.histogram(
+            all_bond_angles[:, i], bins=2**args.bond_angle_bits, density=False
+        )
+        (
+            histogram_library[f"dihedrals_{i}"],
+            histogram_library[f"dihedral_edges_{i}"],
+        ) = np.histogram(
+            all_dihedrals[:, i],
+            bins=2**args.dihedral_bits,
+            range=(-np.pi, np.pi),
+            density=False,
+        )
     # I guess we should save as a numpy array
     np.savez(args.output_file, **histogram_library)
 
@@ -84,7 +117,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("dataset_name", type=str)
     parser.add_argument("output_file", type=str)
-    parser.add_argument("--dataset_type", choices=["foldcomp", "biodataset"], default="foldcomp")
+    parser.add_argument(
+        "--dataset_type", choices=["foldcomp", "biodataset"], default="foldcomp"
+    )
     parser.add_argument("--max_examples", type=int, default=None)
     parser.add_argument("--bond_length_bits", type=int, default=10)
     parser.add_argument("--bond_angle_bits", type=int, default=13)

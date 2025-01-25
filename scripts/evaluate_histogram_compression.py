@@ -25,7 +25,7 @@ import tqdm
 from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein.utils import load_backbone_coord_array
 from bio_datasets.compress.protein.compress import load_bb_histogram_compressor
-from bio_datasets.compress.utils import compute_aligned_rmsd
+from bio_datasets.structure.protein.utils import compute_aligned_rmsd
 
 
 def foldcomp_examples_generator(
