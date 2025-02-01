@@ -4,7 +4,8 @@ import nerfax
 import numpy as np
 from biotite.structure.io.pdbx import encoding
 
-from bio_datasets.compress.encoding import HistogramEncoding
+from bio_datasets.compress.encoding import HistogramEncoding, SparseHistogramEncoding
+from bio_datasets.structure.protein.constants import BACKBONE_BOND_LENGTHS
 from bio_datasets.structure.protein.internal_coordinates import get_backbone_internals
 
 
@@ -111,7 +112,7 @@ class ProteinBackboneCompressor(Compressor):
         )
         return bond_lengths, bond_angles, dihedrals
 
-    def decompress(self, data: bytes) -> np.ndarray:
+    def decompress_coords(self, data: bytes) -> np.ndarray:
         """Decompress a byte string into an array of N, CA, C coordinates."""
         bond_lengths, bond_angles, dihedrals = self.decompress_internals(data)
         xyz_reconstructed = nerfax.reconstruct.reconstruct_from_internal_coordinates(
@@ -125,15 +126,23 @@ class ProteinBackboneCompressor(Compressor):
         return xyz_reconstructed
 
 
-def load_bb_histogram_compressor(path_to_lib):
+def load_bb_histogram_compressor(path_to_lib, sparse_bond_lengths: bool = False, zero_threshold: float = 0.0001):
     """Library should be a dict of arrays saved in npz format, e.g. the output of scripts/build_foldcomp_histogram_library.py."""
     lib = np.load(path_to_lib)
-    bond_length_encoders = [
-        HistogramEncoding.from_library(
-            lib[f"bond_lengths_{i}"], lib[f"bond_length_edges_{i}"]
-        )
-        for i in range(3)
-    ]
+    if sparse_bond_lengths:
+        bond_length_encoders = [
+            SparseHistogramEncoding.from_library(
+                lib[f"bond_lengths_{i}"], lib[f"bond_length_edges_{i}"], zero_threshold=zero_threshold, offset=BACKBONE_BOND_LENGTHS[i]
+            )
+            for i in range(3)
+        ]
+    else:
+        bond_length_encoders = [
+            HistogramEncoding.from_library(
+                lib[f"bond_lengths_{i}"], lib[f"bond_length_edges_{i}"]
+            )
+            for i in range(3)
+        ]
     bond_angle_encoders = [
         HistogramEncoding.from_library(
             lib[f"bond_angles_{i}"], lib[f"bond_angle_edges_{i}"]

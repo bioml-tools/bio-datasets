@@ -236,7 +236,7 @@ class SparseHistogramEncoding:
         The histogram then just encodes the non-zero bins.
         """
         zero_boundaries = [-zero_threshold, zero_threshold]
-        assert np.argsort(np.array(bin_edges)) == np.arange(len(bin_edges))
+        assert (np.argsort(np.array(bin_edges)) == np.arange(len(bin_edges))).all()
         bin_encoding = BinEncoding(list(bin_edges))
         zero_bins = np.digitize(zero_boundaries, bin_edges)
         print("zero_bins", zero_bins)
@@ -246,7 +246,8 @@ class SparseHistogramEncoding:
         huffman_encoding = HuffmanEncoding(
             list(counts_with_zeros), len(counts_with_zeros), return_bool=return_bool
         )
-        return cls(bin_encoding, huffman_encoding, zero_threshold=zero_threshold, offset=offset)
+        histogram_encoding = HistogramEncoding(bin_encoding, huffman_encoding)
+        return cls(histogram_encoding, zero_threshold=zero_threshold, offset=offset)
 
     def encode(self, data: np.ndarray) -> bytes:
         data = data - self.offset
@@ -271,3 +272,6 @@ class SparseHistogramEncoding:
         decoded_values = self.histogram_encoding.decode(values_bytes)
         output[~sparsity_mask] = decoded_values
         return output + self.offset
+
+
+### N.B. the issue with float delta was the increase in loss of precision.

@@ -57,11 +57,11 @@ def main(args):
     decompression_times = []
     for atoms in examples_generator:
         backbone_coords = load_backbone_coord_array(atoms)
-        compressor = load_bb_histogram_compressor(args.histogram_lib)
+        compressor = load_bb_histogram_compressor(args.histogram_lib, sparse_bond_lengths=args.sparse)
         t0 = time.time()
-        compressed = compressor.compress(backbone_coords)
+        compressed = compressor.compress_coords(backbone_coords)
         t1 = time.time()
-        decompressed = compressor.decompress(compressed)
+        decompressed = compressor.decompress_coords(compressed)
         t2 = time.time()
         all_sizes.append(len(compressed))
         all_lengths.append(backbone_coords.shape[0])
@@ -84,5 +84,6 @@ if __name__ == "__main__":
     parser.add_argument("histogram_lib", type=str, help="Path to saved histogram library to use for compression.")
     parser.add_argument("--dataset_type", choices=["foldcomp", "biodataset"], default="foldcomp")
     parser.add_argument("--max_examples", type=int, default=None)
+    parser.add_argument("--sparse", action="store_true")
     args = parser.parse_args()
     main(args)
