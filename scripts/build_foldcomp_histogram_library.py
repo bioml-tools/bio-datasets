@@ -36,6 +36,10 @@ def build_foldcomp_library(db_file, max_examples: Optional[int] = None, delta: b
             bond_lengths, bond_angles, dihedrals = get_backbone_internals_from_atoms(
                 atoms
             )
+            assert dihedrals[0,0] == 0. and bond_angles[0,0] == 1.
+            # remove fixed values which are not informative
+            dihedrals[0, 0] = np.nan
+            bond_angles[0, 0] = np.nan
             if delta:
                 bond_lengths = bond_lengths[1:] - bond_lengths[:-1]
                 bond_angles = bond_angles[1:] - bond_angles[:-1]
@@ -107,13 +111,13 @@ def main(args):
             histogram_library[f"bond_angles_{i}"],
             histogram_library[f"bond_angle_edges_{i}"],
         ) = np.histogram(
-            all_bond_angles[:, i], bins=2**args.bond_angle_bits, density=False
+            all_bond_angles[:, i][~np.isnan(all_bond_angles[:, i])], bins=2**args.bond_angle_bits, density=False
         )
         (
             histogram_library[f"dihedrals_{i}"],
             histogram_library[f"dihedral_edges_{i}"],
         ) = np.histogram(
-            all_dihedrals[:, i],
+            all_dihedrals[:, i][~np.isnan(all_dihedrals[:, i])],
             bins=2**args.dihedral_bits,
             range=(-np.pi, np.pi),
             density=False,

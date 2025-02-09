@@ -237,7 +237,7 @@ class SparseHistogramEncoding:
 
     histogram_encoding: HistogramEncoding
     zero_bins: Optional[list[list[int]]] = None
-    zero_value: Optional[list[float]] = None
+    zero_values: Optional[list[float]] = None
 
     @staticmethod
     def get_zero_bins(
@@ -252,12 +252,12 @@ class SparseHistogramEncoding:
             zero_boundaries = [offset-zero_threshold, offset+zero_threshold]
             assert (np.argsort(np.array(bin_edges)) == np.arange(len(bin_edges))).all()
             # TODO: check we're ok with this being exclusive when we compute counts later
-            zero_bins = np.digitize(zero_boundaries, bin_edges)
+            zero_bins = np.digitize(zero_boundaries, bin_edges)  # TODO: check digitize - start at 0 or 1
             zero_value = offset
         elif num_zero_bins is not None:
             print("Inferring central zero bin from mode")
             central_bin = np.argmax(counts)
-            zero_bins = range(central_bin - num_zero_bins // 2, central_bin + num_zero_bins // 2)
+            zero_bins = range(max(0, central_bin - num_zero_bins // 2), min(len(bin_edges), central_bin + num_zero_bins // 2))
             zero_value = (bin_edges[central_bin] + bin_edges[central_bin+1]) / 2  # TODO: maybe tweak this
             print("zero_bins", zero_bins, len(zero_bins), zero_value)
         else:
@@ -274,9 +274,8 @@ class SparseHistogramEncoding:
         zero_threshold: float = 0.01,
         num_zero_bins: Optional[int] = None,
         offset: float = 0.0,
-        delta: bool = False,
     ):
-        histogram_encoding = HistogramEncoding.build(data, num_bins, low, high, delta=delta)
+        histogram_encoding = HistogramEncoding.build(data, num_bins, low, high)
         counts = histogram_encoding.huffman_encoding.counts
         bin_edges = histogram_encoding.bin_encoding.bins
         zero_bins, zero_value = SparseHistogramEncoding.get_zero_bins(
@@ -289,7 +288,7 @@ class SparseHistogramEncoding:
         return cls(
             histogram_encoding=histogram_encoding,
             zero_bins=[zero_bins],
-            zero_value=[zero_value],
+            zero_values=[zero_value],
         )
 
     @classmethod
@@ -297,35 +296,43 @@ class SparseHistogramEncoding:
         cls,
         counts,
         bin_edges,
+        num_modes: int = 1,
         return_bool: bool = False,
         zero_threshold: Optional[float] = None,
         num_zero_bins: Optional[int] = None,
         offset: float = 0.0,
-        delta: bool = False,
     ):
         """Crucially we need to set the counts to zero for the bins corresponding to zeros after offset.
         The histogram then just encodes the non-zero bins.
+        
+        To build with multiple modes, we can just loop.
         """
-        zero_bins, zero_value = SparseHistogramEncoding.get_zero_bins(
-            counts,
-            bin_edges,
-            zero_threshold=zero_threshold,
-            num_zero_bins=num_zero_bins,
-            offset=offset,
-        )
-
-        bin_encoding = BinEncoding(list(bin_edges))
         counts_with_zeros = np.array(counts)
+        bin_encoding = BinEncoding(list(bin_edges))
         assert ((counts_with_zeros - counts_with_zeros.astype(np.int32)) == 0).all()  # check we have int counts not probs
-        counts_with_zeros[zero_bins[0]:zero_bins[1]] = 0
+        all_zero_bins = []
+        all_zero_values = []
+        for _ in range(num_modes):
+            zero_bins, zero_value = SparseHistogramEncoding.get_zero_bins(
+                counts,
+                bin_edges,
+                zero_threshold=zero_threshold,
+                num_zero_bins=num_zero_bins,
+                offset=offset,
+            )
+            all_zero_bins.append(zero_bins)
+            all_zero_values.append(zero_value)
+            # now remove this mode from counts
+            counts_with_zeros[zero_bins[0]:zero_bins[1]] = 0
+
         huffman_encoding = HuffmanEncoding(
             list(counts_with_zeros), len(counts_with_zeros), return_bool=return_bool
         )
         histogram_encoding = HistogramEncoding(bin_encoding, huffman_encoding)
         return cls(
             histogram_encoding,
-            zero_bins=[zero_bins],
-            zero_value=[zero_value],
+            zero_bins=all_zero_bins,
+            zero_values=all_zero_values,
         )
 
     def encode(self, data: np.ndarray) -> bytes:
@@ -350,13 +357,18 @@ class SparseHistogramEncoding:
 
     def decode(self, data: bytes) -> np.ndarray:
         mask_length, num_padding_bits = struct.unpack("IB", data[:5])  # uint32, uint8 = 4 + 1 bytes total
-        mask_bytes = data[5 : 5 + mask_length]
-        values_bytes = data[5 + mask_length :]
-        sparsity_mask = np.unpackbits(
-            np.frombuffer(mask_bytes, dtype=np.uint8), count=-num_padding_bits
-        ).astype(bool)
-        output = np.zeros(len(sparsity_mask))
+        mask_bytes = data[5 : 5 + mask_length*len(self.zero_bins)]
+        values_bytes = data[5 + mask_length*len(self.zero_bins) :]
+        sparsity_masks = [
+            np.unpackbits(
+                np.frombuffer(mask_bytes, dtype=np.uint8), count=-num_padding_bits
+            ).astype(bool) for _ in self.zero_values
+        ]
+        combined_sparsity_mask = np.zeros_like(sparsity_masks[0], dtype=bool)
+        output = np.zeros(len(sparsity_masks[0]))
+        for mask, zv in zip(sparsity_masks, self.zero_values):
+            combined_sparsity_mask |= mask
+            output[mask] = zv
         decoded_values = self.histogram_encoding.decode(values_bytes)
-        output[~sparsity_mask] = decoded_values
-        output[sparsity_mask] = self.zero_value
+        output[~combined_sparsity_mask] = decoded_values
         return output

@@ -28,8 +28,10 @@ def get_backbone_internals(backbone_coords: np.ndarray):
     lengths = lengths.at[0, 0].set(
         lengths.at[1, 0].get()
     )  # (Dummy initial bond length)
-    return jax.device_get(lengths), jax.device_get(angles), jax.device_get(torsions)
-
+    lengths = np.array(jax.device_get(lengths))
+    angles = np.array(jax.device_get(angles))
+    torsions = np.array(jax.device_get(torsions))
+    return lengths, angles, torsions
 
 def get_backbone_internals_from_atoms(structure: bs.AtomArray):
     # https://github.com/PeptoneLtd/nerfax/blob/2dd1ea019197cd0e273a8d5b920cc850c6b03460/nerfax/mpnerf_constants.py#L590
