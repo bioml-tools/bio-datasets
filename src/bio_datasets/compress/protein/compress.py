@@ -126,7 +126,13 @@ class ProteinBackboneCompressor(Compressor):
         return xyz_reconstructed
 
 
-def load_bb_histogram_compressor(path_to_lib, sparse_bond_lengths: bool = False, zero_threshold: float = 0.0001):
+def load_bb_histogram_compressor(
+    path_to_lib,
+    sparse_bond_lengths: bool = False,
+    sparse_bond_angles: bool = False,
+    encode_deltas: bool = False,
+    zero_threshold: float = 0.0001
+):
     """Library should be a dict of arrays saved in npz format, e.g. the output of scripts/build_foldcomp_histogram_library.py."""
     lib = np.load(path_to_lib)
     if sparse_bond_lengths:

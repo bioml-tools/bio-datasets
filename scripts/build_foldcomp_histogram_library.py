@@ -120,19 +120,29 @@ def main(args):
         )
 
         # TODO: write a test to make sure I understand how to invert this stuff.
-        bond_length_bins = np.digitize(all_bond_lengths[:, i], histogram_library[f"bond_length_edges_{i}"])  # 0 gets assigned to before the left edge
+        # bins range from 1 to len(bins) - 1 inclusive - i.e. 1 to 2**num_bits inclusive 
+        bond_length_bins = np.digitize(all_bond_lengths[:, i], histogram_library[f"bond_length_edges_{i}"])  # 0 gets assigned to values before the left edge
         bond_length_deltas = bond_length_bins[1:] - bond_length_bins[:-1]
         bond_angle_bins = np.digitize(all_bond_angles[:, i], histogram_library[f"bond_angle_edges_{i}"])
         bond_angle_deltas = bond_angle_bins[1:] - bond_angle_bins[:-1]
         dihedral_bins = np.digitize(all_dihedrals[:, i], histogram_library[f"dihedral_edges_{i}"])
         dihedral_deltas = dihedral_bins[1:] - dihedral_bins[:-1]
-        # bincount requires non-negative integers, so we add the max negative delta to all deltas
+        # bincount requires non-negative integers, so we add the max negative delta to all deltas.
+        # i.e.. bin i = 1 , bin i + 1 = 1024. Are we safe excluding 0 / right including 1024? yes see comment above.
         bond_length_delta_counts = np.bincount(bond_length_deltas + (2**args.bond_length_bits - 1), minlength=2**args.bond_length_bits * 2 - 1)  # times two for negative, -1 for zero
         bond_angle_delta_counts = np.bincount(bond_angle_deltas + (2**args.bond_angle_bits - 1), minlength=2**args.bond_angle_bits * 2 - 1)  # times two for negative, -1 for zero
         dihedral_delta_counts = np.bincount(dihedral_deltas + (2**args.dihedral_bits - 1), minlength=2**args.dihedral_bits * 2 - 1)  # times two for negative, -1 for zero
-        histogram_library[f"bond_length_delta_counts_{i}"] = bond_length_delta_counts
-        histogram_library[f"bond_angle_delta_counts_{i}"] = bond_angle_delta_counts
-        histogram_library[f"dihedral_delta_counts_{i}"] = dihedral_delta_counts
+        histogram_library[f"bond_length_deltas_{i}"] = bond_length_delta_counts
+        # TODO: check exactly how edges are defined (what are start and end.)
+        # bins defines a monotonically increasing array of bin edges
+        # including the rightmost edge [and leftmost presumably].
+        # leftmost edge needs to be -2**args.bond_length_bits-1
+        # rightmost edge needs to be 2**args.bond_length_bits - 1
+        histogram_library["bond_length_delta_edges"] = np.arange(-2**args.bond_length_bits-1, 2**args.bond_length_bits)
+        histogram_library[f"bond_angle_deltas_{i}"] = bond_angle_delta_counts
+        histogram_library["bond_angle_delta_edges"] = np.arange(-2**args.bond_angle_bits-1, 2**args.bond_angle_bits)
+        histogram_library[f"dihedral_deltas_{i}"] = dihedral_delta_counts
+        histogram_library["dihedral_delta_edges"] = np.arange(-2**args.dihedral_bits - 1, 2**args.dihedral_bits)
     # I guess we should save as a numpy array
     np.savez(args.output_file, **histogram_library)
 
