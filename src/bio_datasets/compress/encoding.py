@@ -233,13 +233,11 @@ class SparseHistogramEncoding:
 
     We encode the sparsity mask and the masked values separately.
     We can use struct to pack the multiple byte strings into a single bytestring.
-    
-    TODO: enable multi modality (lists of zero bin lists and lists of zero values)
     """
 
     histogram_encoding: HistogramEncoding
-    zero_bins: Optional[list[int]] = None
-    zero_value: Optional[float] = None
+    zero_bins: Optional[list[list[int]]] = None
+    zero_value: Optional[list[float]] = None
 
     @staticmethod
     def get_zero_bins(
@@ -290,8 +288,8 @@ class SparseHistogramEncoding:
         )
         return cls(
             histogram_encoding=histogram_encoding,
-            zero_bins=zero_bins,
-            zero_value=zero_value,
+            zero_bins=[zero_bins],
+            zero_value=[zero_value],
         )
 
     @classmethod
@@ -326,21 +324,28 @@ class SparseHistogramEncoding:
         histogram_encoding = HistogramEncoding(bin_encoding, huffman_encoding)
         return cls(
             histogram_encoding,
-            zero_bins=zero_bins,
-            zero_value=zero_value,
+            zero_bins=[zero_bins],
+            zero_value=[zero_value],
         )
 
     def encode(self, data: np.ndarray) -> bytes:
         bins = self.histogram_encoding.bin_encoding.encode(data)
-        sparsity_mask = np.isin(bins, self.zero_bins)
-        print("sparsity pct", sparsity_mask.mean())
-        num_padding_bits = 8 - len(sparsity_mask) % 8
-        mask_bytes = np.packbits(sparsity_mask).tobytes()  # uint8
-        assert num_padding_bits + len(sparsity_mask) == 8 * len(mask_bytes)
+        sparsity_mask = np.zeros(len(bins), dtype=bool)
+        zero_bin_masks = []
+        mask_lengths = []
+        mask_bytes = b""
+        for zb in self.zero_bins:
+            sparsity_mask |= np.isin(bins, zb)
+            zero_bin_masks.append(np.isin(bins, zb))
+            num_padding_bits = 8 - len(bins) % 8
+            new_mask_bytes = np.packbits(sparsity_mask).tobytes()  # bool -> uint8 -> bytes
+            assert num_padding_bits + len(sparsity_mask) == 8 * len(mask_bytes)
+            mask_bytes += new_mask_bytes
+            mask_lengths.append(len(mask_bytes))
+        assert all(mask_length == mask_lengths[0] for mask_length in mask_lengths)
+        # encode the length of each mask as a uint32 and the number of padding bits as a uint8
+        length_bytes = struct.pack("IB", mask_lengths[0], num_padding_bits)
         values_bytes = self.histogram_encoding.encode(data[~sparsity_mask])
-        mask_length = len(mask_bytes)
-        # encode the length of the mask as a uint32 and the number of padding bits as a uint8
-        length_bytes = struct.pack("IB", mask_length, num_padding_bits)
         return length_bytes + mask_bytes + values_bytes
 
     def decode(self, data: bytes) -> np.ndarray:
