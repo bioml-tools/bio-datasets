@@ -202,6 +202,31 @@ class BitPacking:
         return np.unpackbits(data)
 
 
+### N.B. the issue with float delta was the increase in loss of precision.
+class DeltaHistogramEncoding:
+    bin_encoding: BinEncoding
+    delta_encoding: DeltaEncoding
+    huffman_encoding: HuffmanEncoding
+    
+    @classmethod
+    def from_library(cls, delta_counts, bin_edges, return_bool: bool = False, ):
+        bin_encoding = BinEncoding(list(bin_edges))
+        huffman_encoding = HuffmanEncoding(
+            list(delta_counts), len(delta_counts), return_bool=return_bool
+        )
+        return cls(bin_encoding, DeltaEncoding(), huffman_encoding)
+
+    def encode(self, data: np.ndarray) -> bytes | np.ndarray:
+        bin_data = self.bin_encoding.encode(data)
+        bin_deltas = self.delta_encoding.encode(bin_data)
+        return self.huffman_encoding.encode(bin_deltas)
+
+    def decode(self, data: bytes | np.ndarray) -> np.ndarray:
+        bin_deltas = self.huffman_encoding.decode(data)
+        bin_data = self.delta_encoding.decode(bin_deltas)
+        return self.bin_encoding.decode(bin_data)
+
+
 @dataclass
 class SparseHistogramEncoding:
     """Encoding of a continuous variable using sparse histogram-based Huffman coding.
