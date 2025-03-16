@@ -33,6 +33,7 @@ def get_backbone_internals(backbone_coords: np.ndarray):
     torsions = np.array(jax.device_get(torsions))
     return lengths, angles, torsions
 
+
 def get_backbone_internals_from_atoms(structure: bs.AtomArray):
     # https://github.com/PeptoneLtd/nerfax/blob/2dd1ea019197cd0e273a8d5b920cc850c6b03460/nerfax/mpnerf_constants.py#L590
     xyz = load_backbone_coord_array(structure)

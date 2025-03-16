@@ -1,3 +1,4 @@
+import functools
 import itertools
 import json
 from dataclasses import dataclass
@@ -12,7 +13,10 @@ from biotite.structure.residues import get_residue_starts
 from bio_datasets.np_utils import map_categories_to_indices
 
 
+# @functools.cache()
+# TODO: make note on why we save a separate dictionary
 def get_ccd_dict():
+    """Loads ccd dictionary created by setup_ccd.py during package build."""
     with open(
         Path(__file__).parent.parent
         / "structure"
@@ -100,7 +104,7 @@ RES_NAMES = get_ccd()["chem_comp"]["id"].as_array()
 
 # we dont store these in memory bc too large
 def get_component_types():
-    ccd_data = get_ccd()
+    ccd_data = get_ccd()  # cached by biotite
     res_types = ccd_data["chem_comp"]["type"].as_array()
     return dict(zip(RES_NAMES, res_types))
 
@@ -129,7 +133,7 @@ CHEM_COMPONENT_CATEGORIES = get_component_categories(get_component_types())
 
 
 def get_component_3to1():
-    ccd_data = get_ccd()
+    ccd_data = get_ccd()  # cached by biotite
     res_names = ccd_data["chem_comp"]["id"].as_array()
     res_types = ccd_data["chem_comp"]["one_letter_code"].as_array()
     return {name: code for name, code in zip(res_names, res_types) if code}
@@ -158,6 +162,7 @@ def get_all_residue_names(category: str):
 
 
 # TODO: support inferring chirality from residue name
+# TODO: make notes on supporting OXTs
 @dataclass
 class ResidueDictionary:
     residue_names: List[str]
@@ -218,12 +223,28 @@ class ResidueDictionary:
         category: Optional[str] = None,
         atom_types: Optional[List[str]] = None,
         backbone_atoms: Optional[List[str]] = None,
+        residue_atoms: Optional[Dict[str, List[str]]] = None,
         unknown_residue_name: str = "UNK",
         conversions: Optional[List[Dict]] = None,
         minimum_pdb_entries: int = 1,  # ligands might often be unique - arguably res dict not that useful for these cases?
         **kwargs,
     ):
-        """Hydrogens and OXT are not included in the pre-built dictionary."""
+        """Build a ResidueDictionary from the a pre-built CCD dictionary shipped with bio-datasets.
+
+        Hydrogens and OXT are not included in the pre-built dictionary .
+
+        Args:
+            residue_names: list of residue names to include
+            category: category of residues to include
+            atom_types: list of ORDERED atom types to include. if passing explicitly, will
+                determine the order of atoms within the full atom (e.g. atom37) representation.
+            backbone_atoms: list of backbone atoms to include
+            unknown_residue_name: name of the unknown residue
+            conversions: list of conversions to apply
+            minimum_pdb_entries: minimum number of PDB entries for a residue to be included
+            residue_atoms: dict of residue names to list of atoms to include
+                this defines the ordering of atoms within residues.
+        """
         ccd_dict = get_ccd_dict()
         frequencies = get_residue_frequencies()
 
@@ -245,6 +266,7 @@ class ResidueDictionary:
             None,
         ], f"Unknown category: {category}"
 
+        # TODO: just iterate over residue_names instead if it is provided
         def keep_res(res_name):
             res_filter = frequencies.get(res_name, 0) >= minimum_pdb_entries
             res_filter = (
@@ -308,6 +330,10 @@ class ResidueDictionary:
         conversions: Optional[List[Dict]] = None,
         minimum_pdb_entries: int = 1,  # ligands might often be unique - but then what's benefit of residue dictionary for unique ligands? SmallMolecule doens't even use residue dictionary
     ):
+        """Build a ResidueDictionary from the original CCD files shipped with biotite.
+
+        Used to create the pre-built dictionaries shipped with bio-datasets. (setup_ccd.py)
+        """
         ccd_data = get_ccd()
         chem_component_3to1 = get_component_3to1()
         chem_component_categories = get_component_categories(get_component_types())

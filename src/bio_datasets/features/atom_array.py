@@ -120,10 +120,13 @@ def compress_biotite_atom_array(
 ) -> bytes:
     if compression == "foldcomp":
         import foldcomp
+
         pdb_string = atom_array_to_pdb_string(array)
         return foldcomp.compress(name or "XXXX.pdb", pdb_string)
     elif compression == "gzip":
-        return gzip.compress(encode_biotite_atom_array(array, file_type=file_type or "pdb"))
+        return gzip.compress(
+            encode_biotite_atom_array(array, file_type=file_type or "pdb")
+        )
     elif isinstance(compression, dict):
         raise NotImplementedError("Biotite compressor not supported yet")
     else:
@@ -308,7 +311,9 @@ def _load_from_bytes(
         )
 
 
-def _file_handler_from_bytes(bytes_: bytes, file_type: Optional[str], compression: Optional[str | dict] = None):
+def _file_handler_from_bytes(
+    bytes_: bytes, file_type: Optional[str], compression: Optional[str | dict] = None
+):
     if compression == "foldcomp":
         (_, pdb_str) = foldcomp.decompress(bytes_)
         return StringIO(pdb_str)
@@ -765,7 +770,9 @@ class StructureFeature(CustomFeature):
     with_b_factor: bool = False
     with_atom_id: bool = False
     with_charge: bool = False
-    compression: Optional[str | dict] = None  # "gzip" or "foldcomp" or a serialized biotite compressor or None
+    compression: Optional[
+        str | dict
+    ] = None  # "gzip" or "foldcomp" or a serialized biotite compressor or None
     pa_type: ClassVar[Any] = pa.struct(
         {"bytes": pa.binary(), "path": pa.string(), "type": pa.string()}
     )

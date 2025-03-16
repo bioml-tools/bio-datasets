@@ -7,8 +7,8 @@ __all__ = [
 
 import os
 import sys
-from .compress import ProteinBackboneCompressor, load_bb_histogram_compressor
 
+from .compress import ProteinBackboneCompressor, load_bb_histogram_compressor
 
 sys.setrecursionlimit(10000)  # required for hffman
 

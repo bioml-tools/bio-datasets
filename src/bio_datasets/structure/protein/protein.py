@@ -235,7 +235,9 @@ class ProteinMixin:
             self.residue_dictionary.atom37_compatible
         ), "Atom37 representation assumes use of standard amino acid dictionary"
         # since we have standardised the atoms we can just return standardised atom37 indices for each residue
-        atom37_coords = np.full((len(self.num_residues), len(atom_types), 3), np.nan)
+        atom37_coords = np.full(
+            (len(self.num_residues), len(af2_constants.atom_types), 3), np.nan
+        )
         atom37_coords[
             self.atoms.residue_index, self.atoms.atom37_index
         ] = self.atoms.coord

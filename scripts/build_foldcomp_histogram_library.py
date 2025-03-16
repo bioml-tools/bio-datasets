@@ -22,7 +22,9 @@ from bio_datasets.structure.protein.internal_coordinates import (
 )
 
 
-def build_foldcomp_library(db_file, max_examples: Optional[int] = None, delta: bool = False):
+def build_foldcomp_library(
+    db_file, max_examples: Optional[int] = None, delta: bool = False
+):
     assert os.path.exists(db_file)
     all_bond_lengths = []
     all_bond_angles = []
@@ -36,7 +38,7 @@ def build_foldcomp_library(db_file, max_examples: Optional[int] = None, delta: b
             bond_lengths, bond_angles, dihedrals = get_backbone_internals_from_atoms(
                 atoms
             )
-            assert dihedrals[0,0] == 0. and bond_angles[0,0] == 1.
+            assert dihedrals[0, 0] == 0.0 and bond_angles[0, 0] == 1.0
             # remove fixed values which are not informative
             dihedrals[0, 0] = np.nan
             bond_angles[0, 0] = np.nan
@@ -111,7 +113,9 @@ def main(args):
             histogram_library[f"bond_angles_{i}"],
             histogram_library[f"bond_angle_edges_{i}"],
         ) = np.histogram(
-            all_bond_angles[:, i][~np.isnan(all_bond_angles[:, i])], bins=2**args.bond_angle_bits, density=False
+            all_bond_angles[:, i][~np.isnan(all_bond_angles[:, i])],
+            bins=2**args.bond_angle_bits,
+            density=False,
         )
         (
             histogram_library[f"dihedrals_{i}"],
@@ -124,29 +128,59 @@ def main(args):
         )
 
         # TODO: write a test to make sure I understand how to invert this stuff.
-        # bins range from 1 to len(bins) - 1 inclusive - i.e. 1 to 2**num_bits inclusive 
-        bond_length_bins = np.digitize(all_bond_lengths[:, i], histogram_library[f"bond_length_edges_{i}"])  # 0 gets assigned to values before the left edge
+        # bins range from 1 to len(bins) - 1 inclusive - i.e. 1 to 2**num_bits inclusive
+        bond_length_bins = np.digitize(
+            all_bond_lengths[:, i], histogram_library[f"bond_length_edges_{i}"]
+        )  # 0 gets assigned to values before the left edge
         bond_length_deltas = bond_length_bins[1:] - bond_length_bins[:-1]
-        bond_angle_bins = np.digitize(all_bond_angles[:, i], histogram_library[f"bond_angle_edges_{i}"])
+        bond_angle_bins = np.digitize(
+            all_bond_angles[:, i], histogram_library[f"bond_angle_edges_{i}"]
+        )
         bond_angle_deltas = bond_angle_bins[1:] - bond_angle_bins[:-1]
-        dihedral_bins = np.digitize(all_dihedrals[:, i], histogram_library[f"dihedral_edges_{i}"])
+        dihedral_bins = np.digitize(
+            all_dihedrals[:, i], histogram_library[f"dihedral_edges_{i}"]
+        )
         dihedral_deltas = dihedral_bins[1:] - dihedral_bins[:-1]
         # bincount requires non-negative integers, so we add the max negative delta to all deltas.
         # i.e.. bin i = 1 , bin i + 1 = 1024. Are we safe excluding 0 / right including 1024? yes see comment above.
-        bond_length_delta_counts = np.bincount(bond_length_deltas + (2**args.bond_length_bits - 1), minlength=2**args.bond_length_bits * 2 - 1)  # times two for negative, -1 for zero
-        bond_angle_delta_counts = np.bincount(bond_angle_deltas + (2**args.bond_angle_bits - 1), minlength=2**args.bond_angle_bits * 2 - 1)  # times two for negative, -1 for zero
-        dihedral_delta_counts = np.bincount(dihedral_deltas + (2**args.dihedral_bits - 1), minlength=2**args.dihedral_bits * 2 - 1)  # times two for negative, -1 for zero
+        bond_length_delta_counts = np.bincount(
+            bond_length_deltas + (2**args.bond_length_bits - 1),
+            minlength=2**args.bond_length_bits * 2 - 1,
+        )  # times two for negative, -1 for zero
+        bond_angle_delta_counts = np.bincount(
+            bond_angle_deltas + (2**args.bond_angle_bits - 1),
+            minlength=2**args.bond_angle_bits * 2 - 1,
+        )  # times two for negative, -1 for zero
+        dihedral_delta_counts = np.bincount(
+            dihedral_deltas + (2**args.dihedral_bits - 1),
+            minlength=2**args.dihedral_bits * 2 - 1,
+        )  # times two for negative, -1 for zero
         histogram_library[f"bond_length_deltas_{i}"] = bond_length_delta_counts
         # TODO: check exactly how edges are defined (what are start and end.)
         # bins defines a monotonically increasing array of bin edges
         # including the rightmost edge [and leftmost presumably].
         # leftmost edge needs to be -2**args.bond_length_bits-1
         # rightmost edge needs to be 2**args.bond_length_bits - 1
-        histogram_library["bond_length_delta_edges"] = np.arange(-2**args.bond_length_bits-1, 2**args.bond_length_bits)
+        histogram_library["bond_length_delta_edges"] = np.arange(
+            -(2**args.bond_length_bits) - 1, 2**args.bond_length_bits
+        )
         histogram_library[f"bond_angle_deltas_{i}"] = bond_angle_delta_counts
-        histogram_library["bond_angle_delta_edges"] = np.arange(-2**args.bond_angle_bits-1, 2**args.bond_angle_bits)
+        histogram_library["bond_angle_delta_edges"] = np.arange(
+            -(2**args.bond_angle_bits) - 1, 2**args.bond_angle_bits
+        )
         histogram_library[f"dihedral_deltas_{i}"] = dihedral_delta_counts
-        histogram_library["dihedral_delta_edges"] = np.arange(-2**args.dihedral_bits - 1, 2**args.dihedral_bits)
+        histogram_library["dihedral_delta_edges"] = np.arange(
+            -(2**args.dihedral_bits) - 1, 2**args.dihedral_bits
+        )
+
+    histogram_library["ramachandran_counts"] = np.histogram2d(
+        all_dihedrals[:, 0],
+        all_dihedrals[:, 2],
+        bins=[
+            histogram_library["dihedral_edges_0"],
+            histogram_library["dihedral_edges_2"],
+        ],
+    )[0]
     # I guess we should save as a numpy array
     np.savez(args.output_file, **histogram_library)
 
@@ -162,6 +196,6 @@ if __name__ == "__main__":
     parser.add_argument("--bond_length_bits", type=int, default=10)
     parser.add_argument("--bond_angle_bits", type=int, default=13)
     parser.add_argument("--dihedral_bits", type=int, default=14)
-    parser.add_argument("--delta", action="store_true")
+
     args = parser.parse_args()
     main(args)

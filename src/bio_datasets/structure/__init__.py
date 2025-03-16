@@ -15,9 +15,5 @@ from .biomolecule import Biomolecule, BiomoleculeChain
 from .chemical import SmallMolecule
 from .complex import BiomoleculeComplex
 from .nucleic import DNAChain, RNAChain
-from .protein import (
-    ProteinChain,
-    ProteinComplex,
-    ProteinDictionary,
-)
+from .protein import ProteinChain, ProteinComplex, ProteinDictionary
 from .residue import ResidueDictionary

@@ -11,9 +11,9 @@ from itertools import islice
 from typing import Optional
 
 import numpy as np
+from biotite.structure.io.pdbx.encoding import DeltaEncoding
 from bitarray import bitarray, decodetree
 from bitarray.util import huffman_code, vl_decode, vl_encode
-from biotite.structure.io.pdbx.encoding import DeltaEncoding
 
 
 def numpy_pack_unaligned_bits(data: np.ndarray) -> bytes:
@@ -82,7 +82,6 @@ class BinEncoding:
         return np.array(self.bins)[data + 1]  # right edge of bin
 
 
-
 @dataclass
 class HuffmanEncoding:
     """Encoding of integer array using Huffman coding.
@@ -95,7 +94,9 @@ class HuffmanEncoding:
     num_bins: Optional[
         int
     ] = None  # we assume that bin indices are 0, 1, ..., num_bins - 1
-    return_bool: bool = False  # if True, return binary array (of bools), otherwise return bytes
+    return_bool: bool = (
+        False  # if True, return binary array (of bools), otherwise return bytes
+    )
 
     def __post_init__(self):
         assert len(self.counts) == self.num_bins
@@ -175,7 +176,12 @@ class HistogramEncoding:
         return cls(bin_encoding, huffman_encoding)
 
     @classmethod
-    def from_library(cls, counts, bin_edges, return_bool: bool = False, ):
+    def from_library(
+        cls,
+        counts,
+        bin_edges,
+        return_bool: bool = False,
+    ):
         bin_encoding = BinEncoding(list(bin_edges))
         huffman_encoding = HuffmanEncoding(
             list(counts), len(counts), return_bool=return_bool
@@ -207,9 +213,14 @@ class DeltaHistogramEncoding:
     bin_encoding: BinEncoding
     delta_encoding: DeltaEncoding
     huffman_encoding: HuffmanEncoding
-    
+
     @classmethod
-    def from_library(cls, delta_counts, bin_edges, return_bool: bool = False, ):
+    def from_library(
+        cls,
+        delta_counts,
+        bin_edges,
+        return_bool: bool = False,
+    ):
         bin_encoding = BinEncoding(list(bin_edges))
         huffman_encoding = HuffmanEncoding(
             list(delta_counts), len(delta_counts), return_bool=return_bool
@@ -248,17 +259,26 @@ class SparseHistogramEncoding:
         offset: float = 0.0,
     ):
         if zero_threshold is not None:
-            assert num_zero_bins is None, "Cannot set both zero_threshold and num_zero_bins"
-            zero_boundaries = [offset-zero_threshold, offset+zero_threshold]
+            assert (
+                num_zero_bins is None
+            ), "Cannot set both zero_threshold and num_zero_bins"
+            zero_boundaries = [offset - zero_threshold, offset + zero_threshold]
             assert (np.argsort(np.array(bin_edges)) == np.arange(len(bin_edges))).all()
             # TODO: check we're ok with this being exclusive when we compute counts later
-            zero_bins = np.digitize(zero_boundaries, bin_edges)  # TODO: check digitize - start at 0 or 1
+            zero_bins = np.digitize(
+                zero_boundaries, bin_edges
+            )  # TODO: check digitize - start at 0 or 1
             zero_value = offset
         elif num_zero_bins is not None:
             print("Inferring central zero bin from mode")
             central_bin = np.argmax(counts)
-            zero_bins = range(max(0, central_bin - num_zero_bins // 2), min(len(bin_edges), central_bin + num_zero_bins // 2))
-            zero_value = (bin_edges[central_bin] + bin_edges[central_bin+1]) / 2  # TODO: maybe tweak this
+            zero_bins = range(
+                max(0, central_bin - num_zero_bins // 2),
+                min(len(bin_edges), central_bin + num_zero_bins // 2),
+            )
+            zero_value = (
+                bin_edges[central_bin] + bin_edges[central_bin + 1]
+            ) / 2  # TODO: maybe tweak this
             print("zero_bins", zero_bins, len(zero_bins), zero_value)
         else:
             raise ValueError("Must set either zero_threshold or num_zero_bins")
@@ -304,17 +324,19 @@ class SparseHistogramEncoding:
     ):
         """Crucially we need to set the counts to zero for the bins corresponding to zeros after offset.
         The histogram then just encodes the non-zero bins.
-        
+
         To build with multiple modes, we can just loop.
         """
-        counts_with_zeros = np.array(counts)
+        counts_with_zeros = counts.copy()
         bin_encoding = BinEncoding(list(bin_edges))
-        assert ((counts_with_zeros - counts_with_zeros.astype(np.int32)) == 0).all()  # check we have int counts not probs
+        assert (
+            (counts_with_zeros - counts_with_zeros.astype(np.int32)) == 0
+        ).all()  # check we have int counts not probs
         all_zero_bins = []
         all_zero_values = []
         for _ in range(num_modes):
             zero_bins, zero_value = SparseHistogramEncoding.get_zero_bins(
-                counts,
+                counts_with_zeros,
                 bin_edges,
                 zero_threshold=zero_threshold,
                 num_zero_bins=num_zero_bins,
@@ -337,18 +359,19 @@ class SparseHistogramEncoding:
 
     def encode(self, data: np.ndarray) -> bytes:
         bins = self.histogram_encoding.bin_encoding.encode(data)
-        sparsity_mask = np.zeros(len(bins), dtype=bool)
         zero_bin_masks = []
         mask_lengths = []
         mask_bytes = b""
+        num_padding_bits = 8 - len(bins) % 8
         for zb in self.zero_bins:
-            sparsity_mask |= np.isin(bins, zb)
+            sparsity_mask = np.isin(bins, zb)
             zero_bin_masks.append(np.isin(bins, zb))
-            num_padding_bits = 8 - len(bins) % 8
-            new_mask_bytes = np.packbits(sparsity_mask).tobytes()  # bool -> uint8 -> bytes
-            assert num_padding_bits + len(sparsity_mask) == 8 * len(mask_bytes)
+            new_mask_bytes = np.packbits(
+                sparsity_mask
+            ).tobytes()  # bool -> uint8 -> bytes
+            assert num_padding_bits + len(sparsity_mask) == 8 * len(new_mask_bytes)
             mask_bytes += new_mask_bytes
-            mask_lengths.append(len(mask_bytes))
+            mask_lengths.append(len(new_mask_bytes))
         assert all(mask_length == mask_lengths[0] for mask_length in mask_lengths)
         # encode the length of each mask as a uint32 and the number of padding bits as a uint8
         length_bytes = struct.pack("IB", mask_lengths[0], num_padding_bits)
@@ -356,13 +379,16 @@ class SparseHistogramEncoding:
         return length_bytes + mask_bytes + values_bytes
 
     def decode(self, data: bytes) -> np.ndarray:
-        mask_length, num_padding_bits = struct.unpack("IB", data[:5])  # uint32, uint8 = 4 + 1 bytes total
-        mask_bytes = data[5 : 5 + mask_length*len(self.zero_bins)]
-        values_bytes = data[5 + mask_length*len(self.zero_bins) :]
+        mask_length, num_padding_bits = struct.unpack(
+            "IB", data[:5]
+        )  # uint32, uint8 = 4 + 1 bytes total
+        mask_bytes = data[5 : 5 + mask_length * len(self.zero_bins)]
+        values_bytes = data[5 + mask_length * len(self.zero_bins) :]
         sparsity_masks = [
             np.unpackbits(
                 np.frombuffer(mask_bytes, dtype=np.uint8), count=-num_padding_bits
-            ).astype(bool) for _ in self.zero_values
+            ).astype(bool)
+            for _ in self.zero_values
         ]
         combined_sparsity_mask = np.zeros_like(sparsity_masks[0], dtype=bool)
         output = np.zeros(len(sparsity_masks[0]))

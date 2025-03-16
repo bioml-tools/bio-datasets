@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 import msgpack
 import nerfax
 import numpy as np
@@ -6,6 +7,7 @@ from biotite.structure.io.pdbx import encoding
 
 from bio_datasets.compress.encoding import HistogramEncoding
 from bio_datasets.structure.protein.internal_coordinates import get_backbone_internals
+
 
 @dataclass
 class CompressorConfig:
@@ -76,20 +78,30 @@ class ProteinBackboneCompressor(Compressor):
         }
 
     def compress_internals(
-        self, bond_lengths: np.ndarray, bond_angles: np.ndarray, dihedrals: np.ndarray
+        self,
+        bond_lengths: np.ndarray,
+        bond_angles: np.ndarray,
+        dihedrals: np.ndarray,
+        pack: bool = True,
     ) -> bytes:
         encoded = {}
+        # remove fixed values which are not informative
+        bond_angles[0, 0] = bond_angles[1, 0]
+        dihedrals[0, 0] = dihedrals[1, 0]
         for i in range(3):
             encoded[f"B{i}"] = self.bond_length_encoders[i].encode(bond_lengths[:, i])
             encoded[f"A{i}"] = self.bond_angle_encoders[i].encode(bond_angles[:, i])
             encoded[f"D{i}"] = self.dihedral_encoders[i].encode(dihedrals[:, i])
-        return msgpack.packb(encoded, use_bin_type=True)
+        if pack:
+            return msgpack.packb(encoded, use_bin_type=True)
+        else:
+            return encoded
 
-    def compress_coords(self, data: np.ndarray) -> bytes:
+    def compress_coords(self, data: np.ndarray, pack: bool = True) -> bytes:
         """Compress an array of N, CA, C coordinates into a byte string."""
         internals = get_backbone_internals(data)
         bond_lengths, bond_angles, dihedrals = internals
-        return self.compress_internals(bond_lengths, bond_angles, dihedrals)
+        return self.compress_internals(bond_lengths, bond_angles, dihedrals, pack=pack)
 
     def decompress_internals(
         self, data: bytes
@@ -108,6 +120,9 @@ class ProteinBackboneCompressor(Compressor):
             [self.dihedral_encoders[i].decode(decoded[f"D{i}"]) for i in range(3)],
             axis=-1,
         )
+        # remove fixed values which are not informative
+        bond_angles[0, 0] = 1.0
+        dihedrals[0, 0] = 0.0
         return bond_lengths, bond_angles, dihedrals
 
     def decompress_coords(self, data: bytes) -> np.ndarray:

@@ -1,4 +1,5 @@
 from biotite.structure.io.pdbx import encoding as biotite_encoding
+
 from .encoding import BinEncoding, HistogramEncoding, HuffmanEncoding
 
 biotite_encoding._encoding_classes["Histogram"] = HistogramEncoding
