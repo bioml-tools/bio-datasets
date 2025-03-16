@@ -162,9 +162,14 @@ def get_all_residue_names(category: str):
 
 
 # TODO: support inferring chirality from residue name
-# TODO: make notes on supporting OXTs
 @dataclass
 class ResidueDictionary:
+    """Generic interface to CCD information about residues (components).
+
+    For proteins, Residue Dictionary does not include OXTs.
+    If OXTs are desired, use ProteinDictionary.
+    """
+
     residue_names: List[str]
     residue_letters: List[
         str
@@ -592,9 +597,31 @@ class ResidueDictionary:
             )
         return map_categories_to_indices(res_letter, self.residue_letters)
 
-    def atomtype_index_full_to_short(self):
-        # return a num_residues, num_full, num_short mapping array (e.g. atom37 -> atom14 for each residue)
-        raise NotImplementedError()
+    @functools.cache()
+    def atomtype_index_full_to_reduced(self):
+        """return a num_residues, num_full, num_short mapping array (e.g. atom37 -> atom14 for each residue)
+
+        i.e. similar to af2_constants.RESTYPE_ATOM37_TO_ATOM14
+        """
+        restype_atom_full_to_atom_reduced = []  # mapping (restype, atom37) --> atom14
+        for res_name in self.residue_names:
+            atom_names = self.residue_atoms[res_name]
+            atom_name_to_idx_reduced = {name: i for i, name in enumerate(atom_names)}
+            restype_atom_full_to_atom_reduced.append(
+                [
+                    (
+                        atom_name_to_idx_reduced[name]
+                        if name in atom_name_to_idx_reduced
+                        else 0
+                    )
+                    for name in self.atom_types
+                ]
+            )
+
+        restype_atom_full_to_atom_reduced = np.array(
+            restype_atom_full_to_atom_reduced, dtype=np.int32
+        )
+        return restype_atom_full_to_atom_reduced
 
     def res_name_to_onehot(self, res_name: np.ndarray) -> np.ndarray:
         masks = [res_name == r for r in self.residue_names]
@@ -609,10 +636,6 @@ class ResidueDictionary:
 
     def decode_restype_index(self, restype_index: np.ndarray) -> np.ndarray:
         return "".join(np.array(self.residue_letters)[restype_index])
-
-    def atom_full_to_atom_short(self):
-        # eg atom37->atom14
-        raise NotImplementedError()
 
 
 def tile_residue_annotation_to_atoms(

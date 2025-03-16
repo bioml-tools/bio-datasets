@@ -488,7 +488,7 @@ resnames = [restype_1to3[r] for r in restypes] + [unk_restype]
 resname_to_idx = {resname: i for i, resname in enumerate(resnames)}
 
 # A list of atoms (excluding hydrogen) for each AA type. PDB naming convention.
-# [N.B. ordering is not the same as the CCD]
+# [N.B. ordering is alphabetical, not the same as the CCD (or sidechainnet)]
 residue_atoms = {
     "ALA": ["C", "CA", "CB", "N", "O"],
     "ARG": ["C", "CA", "CB", "CG", "CD", "CZ", "N", "NE", "O", "NH1", "NH2"],

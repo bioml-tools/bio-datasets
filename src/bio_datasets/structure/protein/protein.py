@@ -75,7 +75,7 @@ register_preset_res_dict(
         **{k: v["atom-names"] for k, v in scnet_constants.SC_BUILD_INFO.items()},
         "UNK": ["N", "CA", "C", "O"],
     },
-    # atom_types=...
+    # atom_types=... only required if we want to provide a custom atom37 type ordering
     backbone_atoms=["N", "CA", "C", "O"],
     unknown_residue_name="UNK",
 )
@@ -243,30 +243,38 @@ class ProteinMixin:
     def contacts(self, atom_name: str = "CA", threshold: float = 8.0) -> np.ndarray:
         return super().contacts(atom_name=atom_name, threshold=threshold)
 
-    def atom14_coords(self) -> np.ndarray:
-        assert (  # noqa: PT018
-            self.residue_dictionary.atom14_compatible
-            and self.residue_dictionary.atom37_compatible
-        ), "Atom14 representation assumes use of standard amino acid dictionary"
-        atom14_coords = np.full((len(self.num_residues), 14, 3), np.nan)
-        atom14_index = af2_constants.RESTYPE_ATOM37_TO_ATOM14[
-            self.atoms.residue_index, self.atoms.atom37_index
-        ]
-        atom14_coords[self.atoms.residue_index, atom14_index] = self.atoms.coord
-        return atom14_coords
+    def reduced_atom_coords(self) -> np.ndarray:
+        """Reduced atom coordinate representation: each residue is represented by max(atoms_per_residue) atoms.
 
-    def atom37_coords(self) -> np.ndarray:
-        assert (
-            self.residue_dictionary.atom37_compatible
-        ), "Atom37 representation assumes use of standard amino acid dictionary"
-        # since we have standardised the atoms we can just return standardised atom37 indices for each residue
-        atom37_coords = np.full(
-            (len(self.num_residues), len(af2_constants.atom_types), 3), np.nan
+        max(atoms_per_residue) is determined by the dictionary. e.g. for the alphafold preset dictionary,
+        we have at most 14 atoms per residue, and reduced_atom_coords corresponds to `atom14`
+        Returns:
+            np.ndarray: (num_residues, max(atoms_per_residue), 3)
+        """
+        num_atoms_per_residue = max(self.residue_dictionary.residue_sizes)
+        atom_coords = np.full(
+            (len(self.num_residues), num_atoms_per_residue, 3), np.nan
         )
-        atom37_coords[
-            self.atoms.residue_index, self.atoms.atom37_index
+        atom_index = self.residue_dictionary.atomtype_index_full_to_reduced()[
+            self.atoms.restype_index, self.atoms.atomtype_index
+        ]
+        atom_coords[self.atoms.restype_index, atom_index] = self.atoms.coord
+        return atom_coords
+
+    def full_atom_coords(self) -> np.ndarray:
+        """Full atom coordinate representation: each residue is represented by all atoms in the dictionary.
+
+        For the alphafold preset dictionary, this corresponds to `atom37`
+        Returns:
+            np.ndarray: (num_residues, num_atom_types_in_dictionary, 3)
+        """
+        full_atom_coords = np.full(
+            (len(self.num_residues), len(self.atom_types), 3), np.nan
+        )
+        full_atom_coords[
+            self.atoms.restype_index, self.atoms.atomtype_index
         ] = self.atoms.coord
-        return atom37_coords
+        return full_atom_coords
 
 
 class ProteinChain(ProteinMixin, BiomoleculeChain):
