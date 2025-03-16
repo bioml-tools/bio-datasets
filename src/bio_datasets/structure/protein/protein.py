@@ -13,22 +13,22 @@ import biotite.structure as bs
 import numpy as np
 
 from bio_datasets.structure.biomolecule import BaseBiomoleculeComplex, BiomoleculeChain
-from bio_datasets.structure.protein import constants as protein_constants
+from bio_datasets.structure.protein.constants import af2 as af2_constants
+from bio_datasets.structure.protein.constants import scnet as scnet_constants
 from bio_datasets.structure.residue import (
     ResidueDictionary,
     get_all_residue_names,
     register_preset_res_dict,
 )
 
-from .constants import RESTYPE_ATOM37_TO_ATOM14, atom_types
-
+# TODO TODO TODO TODO TODO TODO TODO TODO
 # TODO: RESTYPE ATOM37 TO ATOM14 can be derived from ResidueDictionary (atom14_coords)
 
 
 register_preset_res_dict(
     "protein",
-    residue_names=copy.deepcopy(protein_constants.resnames),
-    atom_types=copy.deepcopy(protein_constants.atom_types),
+    residue_names=copy.deepcopy(af2_constants.resnames),
+    atom_types=copy.deepcopy(af2_constants.atom_types),
     backbone_atoms=["N", "CA", "C", "O"],
     unknown_residue_name="UNK",
     conversions=[
@@ -48,9 +48,34 @@ register_preset_res_dict(
 )
 
 
+# all residues
 register_preset_res_dict(
     "protein_all",
     residue_names=get_all_residue_names("protein"),
+    backbone_atoms=["N", "CA", "C", "O"],
+    unknown_residue_name="UNK",
+)
+
+
+# TODO: decide whether UNK handling is satisfactory.
+register_preset_res_dict(
+    "alphafold",
+    residue_names=af2_constants.resnames,
+    residue_atoms={**af2_constants.residue_atoms, "UNK": ["N", "CA", "C", "O"]},
+    atom_types=af2_constants.atom_types,
+    backbone_atoms=["N", "CA", "C", "O"],
+    unknown_residue_name="UNK",
+)
+
+# TODO: check this is consistent with more recent sidechainnet api, which doesn't use SC_BUILD_INFO
+register_preset_res_dict(
+    "sidechainnet",
+    residue_names=list(sorted(scnet_constants.SC_BUILD_INFO.keys())),
+    residue_atoms={
+        **{k: v["atom-names"] for k, v in scnet_constants.SC_BUILD_INFO.items()},
+        "UNK": ["N", "CA", "C", "O"],
+    },
+    # atom_types=...
     backbone_atoms=["N", "CA", "C", "O"],
     unknown_residue_name="UNK",
 )
@@ -71,7 +96,7 @@ class ProteinDictionary(ResidueDictionary):
     def _check_atom37_compatible(self):
         assert self.atom_types is not None
         return all(
-            at in protein_constants.atom_types
+            at in af2_constants.atom_types
             for res_ats in self.residue_atoms.values()
             for at in res_ats
         )
@@ -224,7 +249,7 @@ class ProteinMixin:
             and self.residue_dictionary.atom37_compatible
         ), "Atom14 representation assumes use of standard amino acid dictionary"
         atom14_coords = np.full((len(self.num_residues), 14, 3), np.nan)
-        atom14_index = RESTYPE_ATOM37_TO_ATOM14[
+        atom14_index = af2_constants.RESTYPE_ATOM37_TO_ATOM14[
             self.atoms.residue_index, self.atoms.atom37_index
         ]
         atom14_coords[self.atoms.residue_index, atom14_index] = self.atoms.coord

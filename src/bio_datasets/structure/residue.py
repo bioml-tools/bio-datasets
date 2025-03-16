@@ -291,12 +291,36 @@ class ResidueDictionary:
                 len(categories) == 1
             ), "Backbone atoms only supported for single category dictionaries"
 
-        residue_atoms = {res: ccd_dict["residue_atoms"][res] for res in res_names}
+        ccd_residue_atoms = {res: ccd_dict["residue_atoms"][res] for res in res_names}
         residue_elements = {res: ccd_dict["residue_elements"][res] for res in res_names}
+        # TODO: maybe precompute and cache this
+        atom_to_element = {
+            atom: element
+            for res, atoms in ccd_residue_atoms.items()
+            for atom, element in zip(atoms, residue_elements[res])
+        }
+        if residue_atoms is None:
+            residue_atoms = ccd_residue_atoms
+        else:
+            # user provided residue_atoms defines custom order of atoms within reduced-atom representation (e.g. atom14)
+            assert set(residue_atoms.keys()) == set(
+                res_names
+            ), "Mismatch between residue_atoms and res_names"
+            residue_elements = {
+                res: [atom_to_element[atom] for atom in atoms]
+                for res, atoms in residue_atoms.items()
+            }
         residue_categories = {res: res_categories[res] for res in res_names}
 
         element_types = sorted(set(itertools.chain(*residue_elements.values())))
-        atom_types = atom_types or sorted(set(itertools.chain(*residue_atoms.values())))
+        inferred_atom_types = sorted(set(itertools.chain(*residue_atoms.values())))
+        if atom_types is not None:
+            assert set(atom_types) == set(
+                inferred_atom_types
+            ), "Mismatch between atom_types and inferred_atom_types"
+            atom_types = atom_types  # user provided atom_types defines custom order of atoms within full-atom representation (e.g. atom37)
+        else:
+            atom_types = inferred_atom_types
 
         return cls(
             residue_names=res_names,
@@ -312,8 +336,13 @@ class ResidueDictionary:
             **kwargs,
         )
 
+    @functools.cache()
     @classmethod
     def from_preset(cls, preset_name: str, **extra_kwargs):
+        """Build a ResidueDictionary from a preset.
+
+        Presets are pre-built dictionaries shipped with bio-datasets.
+        """
         return cls.from_ccd_dict(
             **_PRESET_RESIDUE_DICTIONARY_KWARGS[preset_name], **extra_kwargs
         )
