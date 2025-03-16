@@ -252,7 +252,7 @@ class Biomolecule(Generic[T]):
                 f"HETATMs are not supported."
             )
 
-        # for unk residues, we just drop any e.g. sidechain atoms without raising an exception
+        # for unk residues, we just drop any unexpected atoms e.g. sidechain atoms without raising an exception
         unexpected_unk_atom_mask = unexpected_atom_mask & (
             atoms.res_name == residue_dictionary.unknown_residue_name
         )

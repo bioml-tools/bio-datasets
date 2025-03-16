@@ -221,6 +221,7 @@ class ResidueDictionary:
                 ]
         self._expected_relative_atom_indices_mapping = None
 
+    # TODO: cache this
     @classmethod
     def from_ccd_dict(
         cls,
@@ -296,8 +297,19 @@ class ResidueDictionary:
                 len(categories) == 1
             ), "Backbone atoms only supported for single category dictionaries"
 
-        ccd_residue_atoms = {res: ccd_dict["residue_atoms"][res] for res in res_names}
-        residue_elements = {res: ccd_dict["residue_elements"][res] for res in res_names}
+        # see standardise_atoms - any unexpected atoms in UNK residues are dropped, in other residues they cause an error
+        ccd_residue_atoms = {
+            res: ccd_dict["residue_atoms"][res]
+            if res != "UNK"
+            else ["N", "CA", "C", "O"]
+            for res in res_names
+        }
+        residue_elements = {
+            res: ccd_dict["residue_elements"][res]
+            if res != "UNK"
+            else ["N", "C", "C", "O"]
+            for res in res_names
+        }
         # TODO: maybe precompute and cache this
         atom_to_element = {
             atom: element
@@ -310,7 +322,7 @@ class ResidueDictionary:
             # user provided residue_atoms defines custom order of atoms within reduced-atom representation (e.g. atom14)
             assert set(residue_atoms.keys()) == set(
                 res_names
-            ), "Mismatch between residue_atoms and res_names"
+            ), f"Mismatch between residue_atoms {set(residue_atoms.keys())} and res_names {set(res_names)}"
             residue_elements = {
                 res: [atom_to_element[atom] for atom in atoms]
                 for res, atoms in residue_atoms.items()
@@ -322,7 +334,7 @@ class ResidueDictionary:
         if atom_types is not None:
             assert set(atom_types) == set(
                 inferred_atom_types
-            ), "Mismatch between atom_types and inferred_atom_types"
+            ), f"Mismatch between atom_types {len(set(atom_types))} and inferred_atom_types {len(set(inferred_atom_types))}"
             atom_types = atom_types  # user provided atom_types defines custom order of atoms within full-atom representation (e.g. atom37)
         else:
             atom_types = inferred_atom_types
@@ -341,7 +353,6 @@ class ResidueDictionary:
             **kwargs,
         )
 
-    @functools.cache()
     @classmethod
     def from_preset(cls, preset_name: str, **extra_kwargs):
         """Build a ResidueDictionary from a preset.
@@ -597,7 +608,7 @@ class ResidueDictionary:
             )
         return map_categories_to_indices(res_letter, self.residue_letters)
 
-    @functools.cache()
+    # TODO: cache this
     def atomtype_index_full_to_reduced(self):
         """return a num_residues, num_full, num_short mapping array (e.g. atom37 -> atom14 for each residue)
 

@@ -21,14 +21,10 @@ from bio_datasets.structure.residue import (
     register_preset_res_dict,
 )
 
-# TODO TODO TODO TODO TODO TODO TODO TODO
-# TODO: RESTYPE ATOM37 TO ATOM14 can be derived from ResidueDictionary (atom14_coords)
-
-
 register_preset_res_dict(
     "protein",
     residue_names=copy.deepcopy(af2_constants.resnames),
-    atom_types=copy.deepcopy(af2_constants.atom_types),
+    atom_types=copy.deepcopy(af2_constants.atom_types[:-1]),  # remove OXT
     backbone_atoms=["N", "CA", "C", "O"],
     unknown_residue_name="UNK",
     conversions=[
@@ -70,7 +66,7 @@ register_preset_res_dict(
 # TODO: check this is consistent with more recent sidechainnet api, which doesn't use SC_BUILD_INFO
 register_preset_res_dict(
     "sidechainnet",
-    residue_names=list(sorted(scnet_constants.SC_BUILD_INFO.keys())),
+    residue_names=list(sorted(scnet_constants.SC_BUILD_INFO.keys())) + ["UNK"],
     residue_atoms={
         **{k: v["atom-names"] for k, v in scnet_constants.SC_BUILD_INFO.items()},
         "UNK": ["N", "CA", "C", "O"],
@@ -125,17 +121,24 @@ class ProteinDictionary(ResidueDictionary):
 
     def get_expected_relative_atom_indices(self, restype_index, atomtype_index):
         assert self.atom_types is not None
-        expected_relative_atom_indices = np.zeros(restype_index.shape[0]).astype(int)
-        oxt_id = self.atom_types.index("OXT")
-        oxt_mask = atomtype_index == oxt_id
-        residues_with_oxt_sizes = self.residue_sizes[restype_index[oxt_mask]]
-        expected_relative_atom_indices[
-            ~oxt_mask
-        ] = super().get_expected_relative_atom_indices(
-            restype_index[~oxt_mask], atomtype_index[~oxt_mask]
-        )
-        expected_relative_atom_indices[oxt_mask] = residues_with_oxt_sizes
-        return expected_relative_atom_indices
+        if self.keep_oxt:
+            expected_relative_atom_indices = np.zeros(restype_index.shape[0]).astype(
+                int
+            )
+            oxt_id = self.atom_types.index("OXT")
+            oxt_mask = atomtype_index == oxt_id
+            residues_with_oxt_sizes = self.residue_sizes[restype_index[oxt_mask]]
+            expected_relative_atom_indices[
+                ~oxt_mask
+            ] = super().get_expected_relative_atom_indices(
+                restype_index[~oxt_mask], atomtype_index[~oxt_mask]
+            )
+            expected_relative_atom_indices[oxt_mask] = residues_with_oxt_sizes
+            return expected_relative_atom_indices
+        else:
+            return super().get_expected_relative_atom_indices(
+                restype_index, atomtype_index
+            )
 
     def get_atom_names(
         self,
@@ -143,32 +146,38 @@ class ProteinDictionary(ResidueDictionary):
         relative_atom_index: np.ndarray,
         chain_id: np.ndarray,
     ):
-        assert len(np.unique(chain_id)) == 1
-        final_residue_mask = restype_index == restype_index[-1]
-        oxt_mask = final_residue_mask & (
-            relative_atom_index == self.residue_sizes[restype_index]
-        )
-        atom_names = np.full((len(restype_index)), "", dtype="U6")
-        atom_names[~oxt_mask] = self.standard_atoms_by_residue()[
-            restype_index[~oxt_mask],
-            relative_atom_index[~oxt_mask],
-        ]
-        atom_names[oxt_mask] = "OXT"
-        return atom_names
+        if self.keep_oxt:
+            assert len(np.unique(chain_id)) == 1
+            final_residue_mask = restype_index == restype_index[-1]
+            oxt_mask = final_residue_mask & (
+                relative_atom_index == self.residue_sizes[restype_index]
+            )
+            atom_names = np.full((len(restype_index)), "", dtype="U6")
+            atom_names[~oxt_mask] = self.standard_atoms_by_residue()[
+                restype_index[~oxt_mask],
+                relative_atom_index[~oxt_mask],
+            ]
+            atom_names[oxt_mask] = "OXT"
+            return atom_names
+        else:
+            return super().get_atom_names(restype_index, relative_atom_index, chain_id)
 
     def get_elements(self, restype_index, relative_atom_index, chain_id):
-        assert len(np.unique(chain_id)) == 1
-        final_residue_mask = restype_index == restype_index[-1]
-        oxt_mask = final_residue_mask & (
-            relative_atom_index == self.residue_sizes[restype_index]
-        )
-        elements = np.full((len(restype_index)), "", dtype="U6")
-        elements[~oxt_mask] = self.standard_elements_by_residue()[
-            restype_index[~oxt_mask],
-            relative_atom_index[~oxt_mask],
-        ]
-        elements[oxt_mask] = "O"
-        return elements
+        if self.keep_oxt:
+            assert len(np.unique(chain_id)) == 1
+            final_residue_mask = restype_index == restype_index[-1]
+            oxt_mask = final_residue_mask & (
+                relative_atom_index == self.residue_sizes[restype_index]
+            )
+            elements = np.full((len(restype_index)), "", dtype="U6")
+            elements[~oxt_mask] = self.standard_elements_by_residue()[
+                restype_index[~oxt_mask],
+                relative_atom_index[~oxt_mask],
+            ]
+            elements[oxt_mask] = "O"
+            return elements
+        else:
+            return super().get_elements(restype_index, relative_atom_index, chain_id)
 
 
 def filter_backbone(array, residue_dictionary):
