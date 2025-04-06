@@ -68,6 +68,7 @@ class Biomolecule(Generic[T]):
             verbose=verbose,
             backbone_only=self.backbone_only,
         )
+        self._residue_starts = get_residue_starts(self.atoms)
         self._standardised = True
 
     @property
@@ -358,13 +359,13 @@ class Biomolecule(Generic[T]):
         return np.isnan(self.atoms.coord).any(axis=-1)
 
     @property
-    def residue_index(self):
-        return self.atoms["residue_index"][self._residue_starts]
+    def res_index(self):
+        return self.atoms["res_index"][self._residue_starts]
 
     @property
     def restype_index(self):
         # TODO: parameterise this via a name e.g. 'aa'
-        return self.atoms["res_type_index"][self._residue_starts]
+        return self.atoms["restype_index"][self._residue_starts]
 
     @property
     def sequence(self) -> str:

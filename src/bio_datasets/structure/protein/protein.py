@@ -68,10 +68,10 @@ register_preset_res_dict(
     "sidechainnet",
     residue_names=list(sorted(scnet_constants.SC_BUILD_INFO.keys())) + ["UNK"],
     residue_atoms={
-        **{k: v["atom-names"] for k, v in scnet_constants.SC_BUILD_INFO.items()},
+        **{k: ["N", "CA", "C", "O"] + v["atom-names"] for k, v in scnet_constants.SC_BUILD_INFO.items()},
         "UNK": ["N", "CA", "C", "O"],
     },
-    # atom_types=... only required if we want to provide a custom atom37 type ordering
+    # atom_types=... only required if we want to provide a custom atom37 type ordering (default is alphabetical)
     backbone_atoms=["N", "CA", "C", "O"],
     unknown_residue_name="UNK",
 )
@@ -262,12 +262,12 @@ class ProteinMixin:
         """
         num_atoms_per_residue = max(self.residue_dictionary.residue_sizes)
         atom_coords = np.full(
-            (len(self.num_residues), num_atoms_per_residue, 3), np.nan
+            (self.num_residues, num_atoms_per_residue, 3), np.nan
         )
         atom_index = self.residue_dictionary.atomtype_index_full_to_reduced()[
             self.atoms.restype_index, self.atoms.atomtype_index
         ]
-        atom_coords[self.atoms.restype_index, atom_index] = self.atoms.coord
+        atom_coords[self.atoms.res_index, atom_index] = self.atoms.coord
         return atom_coords
 
     def full_atom_coords(self) -> np.ndarray:
@@ -278,10 +278,10 @@ class ProteinMixin:
             np.ndarray: (num_residues, num_atom_types_in_dictionary, 3)
         """
         full_atom_coords = np.full(
-            (len(self.num_residues), len(self.atom_types), 3), np.nan
+            (self.num_residues, len(self.atom_types), 3), np.nan
         )
         full_atom_coords[
-            self.atoms.restype_index, self.atoms.atomtype_index
+            self.atoms.res_index, self.atoms.atomtype_index
         ] = self.atoms.coord
         return full_atom_coords
 

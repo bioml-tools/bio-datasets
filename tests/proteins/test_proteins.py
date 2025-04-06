@@ -236,3 +236,13 @@ def test_fill_missing_residues(cif_file_1aq1):
     # n.b. order will be different
     assert len(default_atoms) + nanmask.sum() == len(atoms)
     # TODO: also check that unique chain ids etc are the same
+
+
+def test_sidechainnet_residue_dict(pdb_file_afdb):
+    """The sidechainnet format used in nerfax is a special 'reduced atom' representation."""
+    ref_coords = nerfax_parser.load_to_sc_coord_format(pdb_file_afdb, first_frame_only=True)  # L, 14, 3
+    pd = ProteinDictionary.from_preset("sidechainnet")
+    prot = ProteinChain.from_file(pdb_file_afdb, residue_dictionary=pd)
+    coords = prot.reduced_atom_coords()
+    coords = np.where(np.isnan(coords), 0., coords)
+    assert np.allclose(ref_coords, coords)

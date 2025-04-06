@@ -1,4 +1,3 @@
-import functools
 import itertools
 import json
 from dataclasses import dataclass
@@ -502,7 +501,7 @@ class ResidueDictionary:
         assert self.element_types is not None
         return len(self.element_types)
 
-    # TODO: would be good to cache but cant cache list arg.
+    # TODO: would be good to cache but cant cache list arg -> tuple?
     def standard_atoms_by_residue(self, resnames: Optional[List[str]] = None):
         """Return a fixed size array of atom names for each residue type.
 
@@ -571,7 +570,8 @@ class ResidueDictionary:
         resnames = list(np.array(self.residue_names)[restype_indices])
         # index relative to restype_indices of restype_index
         subset_restype_indices = np.searchsorted(restype_indices, restype_index)
-        return self.standard_atoms_by_residue(resnames)[
+        residue_atoms_arr = self.standard_atoms_by_residue(resnames)
+        return residue_atoms_arr[
             subset_restype_indices,
             relative_atom_index,
         ]
