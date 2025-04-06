@@ -591,6 +591,9 @@ class ResidueDictionary:
             relative_atom_index,
         ]
 
+    def sequence_to_restype_index(self, sequence: str) -> np.ndarray:
+        return self.res_letter_to_index(np.array(list(sequence)))
+
     def res_name_to_index(self, res_name: np.ndarray) -> np.ndarray:
         # n.b. protein resnames are sorted in alphabetical order, apart from UNK
         if not np.all(np.isin(res_name, np.array(self.residue_names))):
@@ -732,6 +735,8 @@ def create_single_chain_atom_array_from_restype_index(
 ):
     """
     Populate annotations from restype_index, assuming all atoms are present.
+
+    restype_index is just an array of residue types of length n residues.
     """
     assert isinstance(chain_id, str)
     if backbone_only:

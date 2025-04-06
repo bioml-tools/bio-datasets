@@ -2,6 +2,7 @@ import numpy as np
 from biotite.structure.filter import filter_amino_acids
 from biotite.structure.io.pdbx import CIFFile, get_structure
 from biotite.structure.residues import residue_iter
+from nerfax.plugin import protein_fold
 from nerfax import parser as nerfax_parser
 
 from bio_datasets.structure.parsing import load_structure

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Union
 
 import biotite.structure as bs
+from biotite.structure.residues import get_residue_starts
 import numpy as np
 
 from bio_datasets.structure.biomolecule import BaseBiomoleculeComplex, BiomoleculeChain
@@ -17,7 +18,9 @@ from bio_datasets.structure.protein.constants import af2 as af2_constants
 from bio_datasets.structure.protein.constants import scnet as scnet_constants
 from bio_datasets.structure.residue import (
     ResidueDictionary,
+    create_single_chain_atom_array_from_restype_index,
     get_all_residue_names,
+    get_residue_starts_mask,
     register_preset_res_dict,
 )
 
@@ -311,6 +314,20 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
             raise_error_on_unexpected=raise_error_on_unexpected,
         )
 
+    @classmethod
+    def from_reduced_atom_coords(cls, reduced_atom_coords, sequence, residue_dictionary):
+        restype_index = residue_dictionary.sequence_to_restype_index(sequence)
+        new_atom_array = create_single_chain_atom_array_from_restype_index(
+            restype_index, residue_dictionary=residue_dictionary, chain_id="A"
+        )
+        residue_starts = get_residue_starts(new_atom_array)
+        residue_index = (
+            np.cumsum(get_residue_starts_mask(new_atom_array, residue_starts)) - 1
+        )
+        relative_atom_index = np.arange(len(new_atom_array)) - residue_starts[residue_index]
+        indices = np.stack([residue_index, relative_atom_index], axis=-1)
+        new_atom_array.coord = reduced_atom_coords[indices]
+        return cls(new_atom_array, residue_dictionary)
 
 class ProteinComplex(ProteinMixin, BaseBiomoleculeComplex):
     """A protein complex."""
