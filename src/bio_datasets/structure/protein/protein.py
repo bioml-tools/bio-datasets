@@ -224,7 +224,7 @@ class ProteinMixin:
     @classmethod
     def default_residue_dictionary(cls):
         return ProteinDictionary.from_preset("protein", keep_oxt=False)
-    
+
     def to_complex(self):
         return ProteinComplex.from_atoms(self.atoms)
 

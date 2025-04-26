@@ -18,7 +18,7 @@ from nerfax.plugin import protein_fold
 
 def get_backbone_internals(backbone_coords: np.ndarray):
     """Get backbone internals for a protein structure.
-    
+
     Args:
         backbone_coords: (l, 3, 3) [N, CA, C]
     Returns:
@@ -75,7 +75,7 @@ def reconstruct_atoms_from_full_internals(bond_lengths, angles, dihedrals, seque
 def reference_sidechain_values():
     """
     Get reference sidechain values for a protein structure.
-    
+
     Returns:
         bond_lengths: (l, 11)
         angles: (l, 11)

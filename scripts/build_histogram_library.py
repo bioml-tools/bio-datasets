@@ -17,9 +17,7 @@ import tqdm
 from bio_datasets import load_dataset
 from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein import ProteinChain, ProteinComplex, ProteinDictionary
-from bio_datasets.structure.protein.internal_coordinates import (
-    get_backbone_internals_from_atoms, get_full_internals
-)
+from bio_datasets.structure.protein.internal_coordinates import get_full_internals
 from bio_datasets.structure.protein.constants import af2 as af2_constants
 
 
@@ -62,101 +60,113 @@ class InternalCoordinateLibrary:
         self.all_bond_lengths.append(bb_bond_lengths)
         self.all_bond_angles.append(bb_bond_angles)
         self.all_dihedrals.append(bb_dihedrals)
-        for residue_code, (sc_bond_lengths, sc_bond_angles, sc_dihedrals) in zip(bs.get_residues(atoms)[1], zip(sc_bond_lengths, sc_bond_angles, sc_dihedrals)):
-            residue_letter = af2_constants.restype_3to1.get(residue_code)
-            if residue_letter is None:
-                continue
+        for residue_code, (res_sc_bond_lengths, res_sc_bond_angles, res_sc_dihedrals) in zip(bs.get_residues(atoms)[1], zip(sc_bond_lengths, sc_bond_angles, sc_dihedrals)):
+            try:
+                residue_letter = self.sc_dict.get_res_letter(residue_code)
+            except KeyError:
+                raise ValueError(f"Unknown residue code: {residue_code}")
             residue_atoms = self.sc_dict.residue_atoms[residue_code]
             atoms_mask = np.zeros(11, dtype=bool)
-            atoms_mask[len(residue_atoms) - 3] = True  # only consider atoms other than N,CA,C (atoms in sc_bond_lengths,etc.)
+            atoms_mask[:len(residue_atoms) - 3] = True  # only consider atoms other than N,CA,C (atoms in sc_bond_lengths,etc.)
 
             # for positions not corresponding to atoms for the given residue, the values are all null so are safely ignored
-            assert np.all(sc_bond_lengths[~atoms_mask] == 0.0)
-            assert np.all(sc_bond_angles[~atoms_mask] == 0.0)
-            assert np.all(sc_dihedrals[~atoms_mask] == 0.0)
-            self.all_sc_bond_lengths[residue_letter].append(sc_bond_lengths[atoms_mask])
-            self.all_sc_bond_angles[residue_letter].append(sc_bond_angles[atoms_mask])
-            self.all_sc_dihedrals[residue_letter].append(sc_dihedrals[atoms_mask])
+            assert np.all(res_sc_bond_lengths[~atoms_mask] == 0.0), f"sc_bond_lengths: {res_sc_bond_lengths}, atoms_mask: {atoms_mask}, residue_code: {residue_code}, residue_atoms: {residue_atoms}"
+            assert np.all(res_sc_bond_angles[~atoms_mask] == 0.0)
+            assert np.all(res_sc_dihedrals[~atoms_mask] == 0.0)
+
+            self.all_sc_bond_lengths[residue_letter].append(res_sc_bond_lengths[atoms_mask])
+            self.all_sc_bond_angles[residue_letter].append(res_sc_bond_angles[atoms_mask])
+            self.all_sc_dihedrals[residue_letter].append(res_sc_dihedrals[atoms_mask])
 
     @property
     def library(self):
-        return {
+        library = {"backbone": {
             "bond_lengths": np.concatenate(self.all_bond_lengths, axis=0),
             "bond_angles": np.concatenate(self.all_bond_angles, axis=0),
             "dihedrals": np.concatenate(self.all_dihedrals, axis=0),
-            "sc_bond_lengths": {aa: np.concatenate(self.all_sc_bond_lengths[aa], axis=0) for aa in self.sc_dict.residue_letters},
-            "sc_bond_angles": {aa: np.concatenate(self.all_sc_bond_angles[aa], axis=0) for aa in self.sc_dict.residue_letters},
-            "sc_dihedrals": {aa: np.concatenate(self.all_sc_dihedrals[aa], axis=0) for aa in self.sc_dict.residue_letters},
-        }
+        }, "sidechain": {}}
+        for residue_letter in af2_constants.restypes:
+            try:
+                library["sidechain"][residue_letter] = {
+                    "bond_lengths": np.stack(self.all_sc_bond_lengths[residue_letter], axis=0),
+                    "bond_angles": np.stack(self.all_sc_bond_angles[residue_letter], axis=0),
+                    "dihedrals": np.stack(self.all_sc_dihedrals[residue_letter], axis=0),
+                }
+            except Exception as e:
+                raise ValueError(f"Error concatenating {residue_letter}: {e}")
+        return library
 
     def reference_values(self):
         return {k: np.mean(v, axis=0) for k, v in self.library.items() if "dihedrals" not in k}
 
     def to_histogram_library(self) -> dict:
-        histogram_library = {"sidechain": {"mean_values": {}}, "backbone": {"mean_values": {}}}
-        lib = self.library
+        histogram_library = {"sidechain": {}, "backbone": {"mean_values": {}}}
+        bb_lib = self.library["backbone"]
+        sc_lib = self.library["sidechain"]
         for i in range(3):
             (
-                histogram_library["backbone"]["bond_lengths"][i],
-                histogram_library["backbone"]["bond_length_edges"][i],
+                histogram_library["backbone"][f"bond_lengths_{i}"],
+                histogram_library["backbone"][f"bond_length_edges_{i}"],
             ) = np.histogram(
-                lib["bond_lengths"][:, i], bins=2**self.bond_length_bits, density=False
+                bb_lib["bond_lengths"][:, i], bins=2**self.bond_length_bits, density=False
             )
-            
             (
-                histogram_library["backbone"]["bond_angles"][i],
-                histogram_library["backbone"]["bond_angle_edges"][i],
+                histogram_library["backbone"][f"bond_angles_{i}"],
+                histogram_library["backbone"][f"bond_angle_edges_{i}"],
             ) = np.histogram(
-                lib["bond_angles"][:, i][~np.isnan(lib["bond_angles"][:, i])],
+                bb_lib["bond_angles"][:, i][~np.isnan(bb_lib["bond_angles"][:, i])],
                 bins=2**self.bond_angle_bits,
                 density=False,
             )
             (
-                histogram_library["backbone"]["dihedrals"][i],
-                histogram_library["backbone"]["dihedral_edges"][i],
+                histogram_library["backbone"][f"dihedrals_{i}"],
+                histogram_library["backbone"][f"dihedral_edges_{i}"],
             ) = np.histogram(
-                lib["dihedrals"][:, i][~np.isnan(lib["dihedrals"][:, i])],
+                bb_lib["dihedrals"][:, i][~np.isnan(bb_lib["dihedrals"][:, i])],
                 bins=2**self.dihedral_bits,
                 range=(-np.pi, np.pi),
                 density=False,
             )
 
-            histogram_library["backbone"]["mean_values"][f"bond_lengths_{i}"] = np.mean(lib["bond_lengths"][:, i])
-            histogram_library["backbone"]["mean_values"][f"bond_angles_{i}"] = np.mean(lib["bond_angles"][:, i][~np.isnan(lib["bond_angles"][:, i])])
-            # i thought it would be interesting to store pairs, but then naive discretization
-            # is too expensive. a simple conditional probabilistic model rather than a standard
-            # histogram would be better - we can do this with these counts! but then the decoder
-            # is less straightforward.
-            histogram_library["ramachandran_counts"] = np.histogram2d(
-                self.all_dihedrals[:, 0],
-                self.all_dihedrals[:, 2],
-                bins=[
-                    histogram_library["backbone"]["dihedral_edges_0"],
-                    histogram_library["backbone"]["dihedral_edges_2"],
-                ],
-            )[0]
-        for residue_letter in self.sc_dict.residue_letters:
-            for i in range(len(self.sc_dict.residue_atoms[residue_letter])-3):
+            histogram_library["backbone"]["mean_values"][f"bond_lengths_{i}"] = np.mean(bb_lib["bond_lengths"][:, i])
+            histogram_library["backbone"]["mean_values"][f"bond_angles_{i}"] = np.mean(bb_lib["bond_angles"][:, i][~np.isnan(bb_lib["bond_angles"][:, i])])
+        # i thought it would be interesting to store pairs, but then naive discretization
+        # is too expensive. a simple conditional probabilistic model rather than a standard
+        # histogram would be better - we can do this with these counts! but then the decoder
+        # is less straightforward.
+        histogram_library["ramachandran_counts"] = np.histogram2d(
+            bb_lib["dihedrals"][:, 0],
+            bb_lib["dihedrals"][:, 2],
+            bins=[
+                histogram_library["backbone"]["dihedral_edges_0"],
+                histogram_library["backbone"]["dihedral_edges_2"],
+            ],
+        )[0]
+        for residue_letter in af2_constants.restypes:
+            histogram_library["sidechain"][residue_letter] = {}
+            histogram_library["sidechain"][residue_letter]["mean_values"] = {}
+            residue_code = self.sc_dict.get_res_name(residue_letter)
+            for i in range(len(self.sc_dict.residue_atoms[residue_code])-3):
                 (
                     histogram_library["sidechain"][residue_letter][f"sc_bond_lengths_{i}"],
                     histogram_library["sidechain"][residue_letter][f"sc_bond_length_edges_{i}"],
                 ) = np.histogram(
-                    lib["sc_bond_lengths"][residue_letter][:, i], bins=2**self.bond_length_bits, density=False
+                    sc_lib[residue_letter]["bond_lengths"][:, i], bins=2**self.bond_length_bits, density=False
                 )
                 (
                     histogram_library["sidechain"][residue_letter][f"sc_bond_angles_{i}"],
                     histogram_library["sidechain"][residue_letter][f"sc_bond_angle_edges_{i}"],
                 ) = np.histogram(
-                    lib["sc_bond_angles"][residue_letter][:, i], bins=2**self.bond_angle_bits, density=False
+                    sc_lib[residue_letter]["bond_angles"][:, i], bins=2**self.bond_angle_bits, density=False
                 )
                 (
                     histogram_library["sidechain"][residue_letter][f"sc_dihedrals_{i}"],
                     histogram_library["sidechain"][residue_letter][f"sc_dihedral_edges_{i}"],
                 ) = np.histogram(
-                    lib["sc_dihedrals"][residue_letter][:, i], bins=2**self.dihedral_bits, density=False
+                    sc_lib[residue_letter]["dihedrals"][:, i], bins=2**self.dihedral_bits, density=False
                 )
-                histogram_library["sidechain"][residue_letter]["mean_values"][f"sc_bond_lengths_{i}"] = np.mean(lib["sc_bond_lengths"][residue_letter][:, i])
-                histogram_library["sidechain"][residue_letter]["mean_values"][f"sc_bond_angles_{i}"] = np.mean(lib["sc_bond_angles"][residue_letter][:, i])
+                histogram_library["sidechain"][residue_letter]["mean_values"][f"sc_bond_lengths_{i}"] = np.mean(sc_lib[residue_letter]["bond_lengths"][:, i])
+                histogram_library["sidechain"][residue_letter]["mean_values"][f"sc_bond_angles_{i}"] = np.mean(sc_lib[residue_letter]["bond_angles"][:, i])
 
         return histogram_library
 
@@ -165,7 +175,12 @@ def build_foldcomp_library(
     db_file, max_examples: Optional[int] = None, delta: bool = False
 ):
     assert os.path.exists(db_file)
-    library = InternalCoordinateLibrary()
+    library = InternalCoordinateLibrary(
+        bond_length_bits=args.bond_length_bits,
+        bond_angle_bits=args.bond_angle_bits,
+        dihedral_bits=args.dihedral_bits,
+        sidechain_torsion_bits=args.sidechain_torsion_bits,
+    )
     with foldcomp.open(db_file, decompress=True) as db:
         for (name, pdb_str) in tqdm.tqdm(itertools.islice(db, max_examples)):
             # if we opened with decompress False, we wouldn't get name
@@ -182,7 +197,12 @@ def build_biodataset_library(
     delta: bool = False,
 ):
     dataset = load_dataset(dataset_name)
-    library = InternalCoordinateLibrary()
+    library = InternalCoordinateLibrary(
+        bond_length_bits=args.bond_length_bits,
+        bond_angle_bits=args.bond_angle_bits,
+        dihedral_bits=args.dihedral_bits,
+        sidechain_torsion_bits=args.sidechain_torsion_bits,
+    )
     for example in itertools.islice(dataset, max_examples):
         if isinstance(example["structure"], ProteinChain):
             atoms = example["structure"].atoms
@@ -224,7 +244,9 @@ if __name__ == "__main__":
     parser.add_argument("--bond_length_bits", type=int, default=10)
     parser.add_argument("--bond_angle_bits", type=int, default=13)
     parser.add_argument("--dihedral_bits", type=int, default=14)
-    parser.add_argument("--sidechain_torsion_bits", type=int, default=None)  # maybe 10 is reasonable, since there is no real issue with accumulation of errors
+    # maybe 10 is reasonable, since there is no real issue with accumulation of errors
+    # we should ideally implement functionality to convert from 10 -> 9 -> 8 etc.
+    parser.add_argument("--sidechain_torsion_bits", type=int, default=10)
 
     args = parser.parse_args()
     main(args)
