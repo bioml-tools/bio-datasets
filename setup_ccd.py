@@ -1,4 +1,4 @@
-"""Modified from biotite setup_ccd.py"""
+"""Modified from biotite setup_ccd.py, to add the pdbx_chem_comp_descriptor field and save residue frequency information to a dictionary"""
 # flake8: noqa
 import gzip
 import json

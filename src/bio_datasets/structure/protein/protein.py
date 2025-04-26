@@ -220,6 +220,11 @@ def set_annotation_at_masked_atoms(
 
 # TODO: add support for batched application of these functions (i.e. to multiple proteins at once)
 class ProteinMixin:
+
+    @classmethod
+    def default_residue_dictionary(cls):
+        return ProteinDictionary.from_preset("protein", keep_oxt=False)
+    
     def to_complex(self):
         return ProteinComplex.from_atoms(self.atoms)
 
@@ -317,17 +322,18 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
     @classmethod
     def from_reduced_atom_coords(cls, reduced_atom_coords, sequence, residue_dictionary):
         restype_index = residue_dictionary.sequence_to_restype_index(sequence)
-        new_atom_array = create_single_chain_atom_array_from_restype_index(
+        new_atom_array, residue_starts, _ = create_single_chain_atom_array_from_restype_index(
             restype_index, residue_dictionary=residue_dictionary, chain_id="A"
         )
-        residue_starts = get_residue_starts(new_atom_array)
         residue_index = (
             np.cumsum(get_residue_starts_mask(new_atom_array, residue_starts)) - 1
         )
         relative_atom_index = np.arange(len(new_atom_array)) - residue_starts[residue_index]
-        indices = np.stack([residue_index, relative_atom_index], axis=-1)
-        new_atom_array.coord = reduced_atom_coords[indices]
+        coords = reduced_atom_coords[residue_index, relative_atom_index].astype(np.float32)
+        assert isinstance(coords, np.ndarray), f"coords: {type(coords)} is not a numpy array"
+        new_atom_array.coord = coords
         return cls(new_atom_array, residue_dictionary)
+
 
 class ProteinComplex(ProteinMixin, BaseBiomoleculeComplex):
     """A protein complex."""

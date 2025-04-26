@@ -1,9 +1,5 @@
 """Use utils from nerfax parser to convert protein into internal coordinates.
 
-TODO: figure out appropriate bond lengths / angles to measure with biopython
-to avoid needing to use nerfax at all for structure -> internals. (we still need
-nerfax for internals -> structure, although this could be a cool thing to contribute
-to biotite.)
 for calculation of backbone torsions, see ramachandran plot example
 phi, psi, omega = struc.dihedral_backbone(chain)
 
@@ -21,7 +17,16 @@ from nerfax.plugin import protein_fold
 
 
 def get_backbone_internals(backbone_coords: np.ndarray):
-    lengths, angles, torsions = nerfax.parser.xyz_to_internal_coords(
+    """Get backbone internals for a protein structure.
+    
+    Args:
+        backbone_coords: (l, 3, 3) [N, CA, C]
+    Returns:
+        bond_lengths: (l, 3)
+        angles: (l, 3)
+        dihedrals: (l, 3)
+    """
+    lengths, angles, dihedrals = nerfax.parser.xyz_to_internal_coords(
         nerfax.parser.insert_zero(backbone_coords).reshape((-1, 3))
     )
     angles = angles.at[0, 0].set(1.0)  # (Dummy non-zero angle required)
@@ -30,8 +35,8 @@ def get_backbone_internals(backbone_coords: np.ndarray):
     )  # (Dummy initial bond length)
     lengths = np.array(jax.device_get(lengths))
     angles = np.array(jax.device_get(angles))
-    torsions = np.array(jax.device_get(torsions))
-    return lengths, angles, torsions
+    dihedrals = np.array(jax.device_get(dihedrals))
+    return lengths, angles, dihedrals
 
 
 def get_backbone_internals_from_atoms(structure: bs.AtomArray):
@@ -41,6 +46,16 @@ def get_backbone_internals_from_atoms(structure: bs.AtomArray):
 
 
 def get_full_internals(structure: bs.AtomArray):
+    """Get full internals for a protein structure.
+
+    The first 3 columns are the backbone bond lengths, angles, and dihedrals.
+    The remaining 11 columns are the sidechain bond lengths, angles, and dihedrals.
+
+    Returns:
+        bond_lengths: (l, 14)
+        angles: (l, 14)
+        dihedrals: (l, 14)
+    """
     sc_dict = ProteinDictionary.from_preset("sidechainnet")
     prot = ProteinChain(structure, residue_dictionary=sc_dict)
     coords = prot.reduced_atom_coords()
@@ -54,50 +69,22 @@ def reconstruct_atoms_from_full_internals(bond_lengths, angles, dihedrals, seque
     point_ref, cloud_mask = nerfax_parser.get_point_ref_and_cloud_mask(sequence)
     angles_mask = np.stack([angles, dihedrals])
     coords = protein_fold(cloud_mask, point_ref[:3], angles_mask, bond_lengths)
-    return bs.AtomArray.from_coord_array(coords)
+    return ProteinChain.from_reduced_atom_coords(coords, sequence, ProteinDictionary.from_preset("sidechainnet"))
 
 
-# from bio_datasets.structure.protein import constants as protein_constants
-# from biotite.structure.geometry import dihedral
-# from biotite.structure.util import coord_for_atom_name_per_residue
-# def get_sidechain_internals_list(structure: bs.AtomArray) -> list:
-#     # one option would be to return l, 4 array of values (+ l, 4 mask)
-#     residue_torsions = []
-#     # more efficient approach will be to iterate over residue types - because dihedral can operate on arrays (l,3)
-#     # if we implement this, we have to also implement ordering returned dihedrals in original order.
-#     for res in bs.residue_iter(structure):
-#         chi_atoms_list = protein_constants.chi_angles_atoms[res.res_name[0]]
-#         chis = [
-#             dihedral(*coord_for_atom_name_per_residue(res, atom_list))[0]
-#             for atom_list in chi_atoms_list
-#         ]
-#         residue_torsions.append(chis)
-#     return residue_torsions
+def reference_sidechain_values():
+    """
+    Get reference sidechain values for a protein structure.
+    
+    Returns:
+        bond_lengths: (l, 11)
+        angles: (l, 11)
+    """
+    raise NotImplementedError()
 
 
-# def get_sidechain_internals(structure: bs.AtomArray) -> np.ndarray:
-#     res_ids, res_names = bs.get_residues(structure)
-#     res_names = np.array(res_names)
-#     unique_res_names = np.unique(res_names)
-#     chi_array = np.zeros((len(res_names), 4))
-#     chi_mask = np.zeros((len(res_names), 4), dtype=bool)
-#     for res_name in unique_res_names:
-#         res_mask = res_names == res_name
-#         chi_ids = np.argwhere(
-#             protein_constants.chi_angles_mask[
-#                 protein_constants.restype_order[
-#                     protein_constants.restype_3to1[res_name]
-#                 ]
-#             ]
-#         ).flatten()
-#         assert len(chi_ids) == len(protein_constants.chi_angles_atoms[res_name])
-#         for chi_id, chi_atom_list in zip(
-#             chi_ids, protein_constants.chi_angles_atoms[res_name]
-#         ):
-#             chi_array[res_mask, chi_id] = dihedral(
-#                 *coord_for_atom_name_per_residue(
-#                     structure[structure.res_name == res_name], chi_atom_list
-#                 )
-#             )
-#             chi_mask[res_mask, chi_id] = True
-#     return chi_array, chi_mask
+# TODO: implement converter between full internals and torsions to be compressed.
+# ## Pull out the lengths, angles and dihedrals
+# this is going to be something like the relevant reference coordinates for placement of each individual atom.
+# ref_coords = vmap(lambda x,y: x[y], in_axes=(0,1))(coords, point_ref_mod).swapaxes(1,2)
+# data_sc = vmap(decompose_quad)(ref_coords) # lengths, angles, dihedrals

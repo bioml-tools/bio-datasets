@@ -36,6 +36,10 @@ class Biomolecule(Generic[T]):
     other classes of biopolymers are polysaccharides and peptidoglycans.
     """
 
+    @classmethod
+    def default_residue_dictionary(cls):
+        return ResidueDictionary.from_ccd_dict()
+
     def __init__(
         self,
         atoms: bs.AtomArray,
@@ -85,9 +89,7 @@ class Biomolecule(Generic[T]):
         **kwargs,
     ):
         if residue_dictionary is None:
-            residue_dictionary = (
-                ResidueDictionary.from_ccd_dict()
-            )  # TODO: better default?
+            residue_dictionary = cls.default_residue_dictionary()
         atoms = load_structure(
             file_path, file_type=file_type, extra_fields=extra_fields
         )
@@ -370,8 +372,8 @@ class Biomolecule(Generic[T]):
     @property
     def sequence(self) -> str:
         return "".join(
-            self.residue_dictionary.residue_letters[
-                self.atoms.res_type_index[self._residue_starts]
+            np.array(self.residue_dictionary.residue_letters)[
+                self.atoms.restype_index[self._residue_starts]
             ]
         )
 

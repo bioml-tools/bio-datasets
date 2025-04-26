@@ -637,6 +637,12 @@ class ResidueDictionary:
         )
         return restype_atom_full_to_atom_reduced
 
+    def get_res_name(self, res_letter: str) -> str:
+        return self.residue_names[self.residue_letters.index(res_letter)]
+
+    def get_res_letter(self, res_name: str) -> str:
+        return self.residue_letters[self.residue_names.index(res_name)]
+
     def res_name_to_onehot(self, res_name: np.ndarray) -> np.ndarray:
         masks = [res_name == r for r in self.residue_names]
         return np.stack(masks, axis=-1)

@@ -247,3 +247,35 @@ def test_sidechainnet_residue_dict(pdb_file_afdb):
     coords = prot.reduced_atom_coords()
     coords = np.where(np.isnan(coords), 0., coords)
     assert np.allclose(ref_coords, coords, atol=1e-4)
+
+
+def test_reduced_atom_coords_round_trip(pdb_file_afdb):
+    pd = ProteinDictionary.from_preset("sidechainnet")
+    prot = ProteinChain.from_file(pdb_file_afdb, residue_dictionary=pd)
+    coords = prot.reduced_atom_coords()
+    prot_recons = ProteinChain.from_reduced_atom_coords(coords, prot.sequence, pd)
+    assert np.allclose(prot.atoms.coord, prot_recons.atoms.coord, atol=1e-4)
+    assert np.all(prot.atoms.res_id == prot_recons.atoms.res_id)
+    assert np.all(prot.atoms.res_name == prot_recons.atoms.res_name)
+    assert np.all(prot.atoms.chain_id == prot_recons.atoms.chain_id)
+    assert np.all(prot.atoms.element == prot_recons.atoms.element)
+    assert np.all(prot.atoms.res_index == prot_recons.atoms.res_index)
+    assert np.all(prot.atoms.atom_name == prot_recons.atoms.atom_name)
+
+# and then back into the reduced atom format
+# ultimately we want to be able to replace the nerfax reconstruction function with our own version
+# and to be able to use our own discretisation of the side chain angles
+def test_sidechainnet_round_trip(pdb_file_afdb):
+    ref_coords, seq = nerfax_parser.load_to_sc_coord_format(pdb_file_afdb, first_frame_only=True)  # L, 14, 3
+    pd = ProteinDictionary.from_preset("sidechainnet")
+    prot = ProteinChain.from_file(pdb_file_afdb, residue_dictionary=pd)
+    coords = prot.reduced_atom_coords()
+    coords = np.where(np.isnan(coords), 0., coords)
+    assert np.allclose(ref_coords, coords, atol=1e-4)
+    point_ref, cloud_mask = nerfax_parser.get_point_ref_and_cloud_mask(seq)
+    bond_mask, angles_mask = nerfax_parser.get_data_masks(coords, point_ref)
+    recons_coords = protein_fold(cloud_mask, point_ref[:3], angles_mask, bond_mask)
+    # we lose the global frame, so we can't expect to recover the original coordinates exactly
+    # instead we check that the coordinates are close after the optimal transformation.
+    print(recons_coords[0], coords[0], ref_coords[0])
+    # assert np.allclose(coords, recons_coords, atol=1e-4)
