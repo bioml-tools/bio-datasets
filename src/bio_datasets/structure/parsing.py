@@ -346,7 +346,7 @@ def load_structure(
     extra_fields=None,
     fill_missing_residues=False,
     include_bonds=False,
-):
+) -> bs.AtomArray:
     """
     TODO: support foldcomp format, binary cif format
     TODO: support model choice / multiple models (multiple conformations)
@@ -452,7 +452,7 @@ def get_assembly_with_missing_residues(  # noqa: CCR001
     include_bonds=False,
     fill_missing_residues=False,
     include_sym_id=True,
-):
+) -> bs.AtomArray:
     """Modified from biotite.structure.io.pdbx.get_assembly to fill in missing residues.
 
     We also return `label` fields rather than `auth` fields, but add `auth` fields as annotations.
@@ -541,7 +541,7 @@ def load_assembly(
     extra_fields=None,
     fill_missing_residues=False,
     include_bonds=False,
-):
+) -> bs.AtomArray:
     """Load biological assembly from cif/bcif file.
 
     TODO: add support for pdb files.

@@ -16,7 +16,9 @@ import numpy as np
 import pyarrow as pa
 from biotite import structure as bs
 from biotite.structure.filter import filter_amino_acids
+from biotite.structure.io import pdbx
 from biotite.structure.io.pdb import PDBFile
+from biotite.structure.io.pdbx import encoding
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Array2D, config
 from datasets.download import DownloadConfig
@@ -26,12 +28,12 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
+from bio_datasets.features.features import CompressedArray1D
 from bio_datasets.structure import (
     Biomolecule,
     BiomoleculeChain,
     BiomoleculeComplex,
     parsing,
-    pdbx,
 )
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
@@ -110,35 +112,41 @@ def protein_atom_array_from_dict(
         raise ValueError("No coordinates found")
 
 
-def _pdb_encode_biotite_atom_array(
-    array: bs.AtomArray, encode_with_foldcomp: bool = False, name: Optional[str] = None
+def compress_biotite_atom_array(
+    array: bs.AtomArray,
+    compression: Optional[str | dict] = None,
+    file_type: Optional[str] = None,  # for gzip
+    name: Optional[str] = None,  # for foldcomp
 ) -> bytes:
+    if compression == "foldcomp":
+        import foldcomp
+
+        pdb_string = atom_array_to_pdb_string(array)
+        return foldcomp.compress(name or "XXXX.pdb", pdb_string)
+    elif compression == "gzip":
+        return gzip.compress(
+            encode_biotite_atom_array(array, file_type=file_type or "pdb")
+        )
+    elif isinstance(compression, dict):
+        raise NotImplementedError("Biotite compressor not supported yet")
+    else:
+        raise ValueError("Unsupported compression type")
+
+
+def atom_array_to_pdb_string(array: bs.AtomArray) -> bytes:
     """
-    Encode a biotite AtomArray to pdb string bytes, optionally compressing with foldcomp.
+    Encode a biotite AtomArray to pdb string bytes.
     """
     pdbf = PDBFile()
     pdbf.set_structure(array)
     contents = "\n".join(pdbf.lines) + "\n"
-    if encode_with_foldcomp:
-        import foldcomp
-
-        if name is None:
-            name = getattr(array, "name", str(uuid.uuid4()))
-        return foldcomp.compress(name, contents)
-    else:
-        return contents.encode()
+    return contents
 
 
-def encode_biotite_atom_array(
-    array: bs.AtomArray,
-    encode_with_foldcomp: bool = False,
-    name: Optional[str] = None,  # just for foldcomp
-    file_type: str = "pdb",
-) -> bytes:
-    """Encode a biotite AtomArray to file_type (pdb/cif/bcif) -formatted bytes, optionally compressing with foldcomp."""
-    if encode_with_foldcomp or file_type == "pdb":
-        assert file_type == "pdb", "foldcomp only supported for pdb"
-        return _pdb_encode_biotite_atom_array(array, encode_with_foldcomp, name)
+def encode_biotite_atom_array(array: bs.AtomArray, file_type: str = "pdb") -> bytes:
+    """Encode a biotite AtomArray to file_type (pdb/cif/bcif) -formatted bytes."""
+    if file_type == "pdb":
+        return atom_array_to_pdb_string(array).encode()
     elif file_type == "cif":
         cf = pdbx.CIFFile()
         pdbx.set_structure(cf, array)
@@ -158,6 +166,7 @@ def encode_biotite_atom_array(
 
 def load_structure_from_file_dict(
     d: dict,
+    compression: Optional[str | dict] = None,
     token_per_repo_id: Optional[Dict[str, int]] = None,
     extra_fields: Optional[List[str]] = None,
     fill_missing_residues: bool = False,
@@ -186,6 +195,7 @@ def load_structure_from_file_dict(
             bytes_,
             file_type,
             extra_fields,
+            compression=compression,
             fill_missing_residues=fill_missing_residues,
             load_assembly=load_assembly,
             include_bonds=include_bonds,
@@ -277,6 +287,7 @@ def _load_from_bytes(
     bytes_: bytes,
     file_type: str,
     extra_fields: Optional[List[str]],
+    compression: Optional[str | dict] = None,
     fill_missing_residues: bool = False,
     load_assembly: bool = False,
     include_bonds: bool = False,
@@ -300,12 +311,21 @@ def _load_from_bytes(
         )
 
 
-def _file_handler_from_bytes(bytes_: bytes, file_type: Optional[str]):
-    if file_type in ["fcz", "bcif"]:
+def _file_handler_from_bytes(
+    bytes_: bytes, file_type: Optional[str], compression: Optional[str | dict] = None
+):
+    if compression == "foldcomp":
+        (_, pdb_str) = foldcomp.decompress(bytes_)
+        return StringIO(pdb_str)
+    elif compression == "gzip":
+        return _file_handler_from_bytes(gzip.decompress(bytes_), file_type)
+    elif isinstance(compression, dict):
+        raise NotImplementedError("Biotite compressor not supported yet")
+    elif compression is not None:
+        raise ValueError("Unsupported compression type")
+
+    if file_type == "bcif":
         return BytesIO(bytes_)
-    elif file_type.endswith(".gz"):
-        decompressed = gzip.decompress(bytes_)
-        return _file_handler_from_bytes(decompressed, file_type[:-3])
     elif file_type in ["pdb", "cif"]:
         return StringIO(bytes_.decode())
     else:
@@ -750,8 +770,9 @@ class StructureFeature(CustomFeature):
     with_b_factor: bool = False
     with_atom_id: bool = False
     with_charge: bool = False
-    encode_with_foldcomp: bool = False
-    compression: Optional[str] = None  # "gzip" or "foldcomp" or None
+    compression: Optional[
+        str | dict
+    ] = None  # "gzip" or "foldcomp" or a serialized biotite compressor or None
     pa_type: ClassVar[Any] = pa.struct(
         {"bytes": pa.binary(), "path": pa.string(), "type": pa.string()}
     )
@@ -832,9 +853,7 @@ class StructureFeature(CustomFeature):
                 f"A structure sample should have one of 'path' or 'bytes' but they are missing or None in {value}."
             )
 
-    def _encode_example(
-        self, value: Union[str, bytes, bs.AtomArray], _preferred_type="pdb"
-    ) -> dict:
+    def _encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
         """Encode example into a format for Arrow.
 
         Similar to the built-in Image/Audio features, we allow for file contents to be written
@@ -853,14 +872,14 @@ class StructureFeature(CustomFeature):
                 assert (
                     len(chain_ids) == 1
                 ), "Only single chain supported when `load_as` == 'chain'"
+
             encoded = {
                 "path": None,
                 "bytes": encode_biotite_atom_array(
                     value,
-                    encode_with_foldcomp=self.encode_with_foldcomp,
-                    file_type=_preferred_type,
+                    file_type=self.file_type or "pdb",
                 ),
-                "type": _preferred_type if not self.encode_with_foldcomp else "fcz",
+                "type": self.file_type or "pdb",
             }
         elif isinstance(value, dict):
             encoded = self._encode_dict(value)
@@ -881,6 +900,7 @@ class StructureFeature(CustomFeature):
 
         atoms = load_structure_from_file_dict(
             value,
+            compression=self.compression,
             token_per_repo_id=token_per_repo_id,
             extra_fields=self.extra_fields,
             fill_missing_residues=self.fill_missing_residues,
@@ -1080,7 +1100,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         default_factory=functools.partial(ProteinDictionary.from_preset, "protein")
     )
     load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
-    internal_coords_type: str = None  # foldcomp, idealised, or pnerf
+    use_internal_coords: bool = False
     _type: str = field(
         default="ProteinAtomArrayFeature", init=False, repr=False
     )  # registered feature name
@@ -1090,6 +1110,99 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         assert (
             self.residue_dictionary is not None
         ), "residue_dictionary must be provided"
+        if self.use_internal_coords:
+            # override features
+            self._features = self._make_internal_coords_features_dict()
+
+    # def _make_internal_coords_features_dict(self):
+    #     # TODO: maybe just don't ever store restype_index?
+    #     if self.residue_dictionary is not None:
+    #         residue_identifier = ("restype_index", Array1D((None,), "uint8"))
+    #     else:
+    #         residue_identifier = ("res_name", Array1D((None,), "string"))
+    #     # bond lengths and angles are going to be stored as int8 for sure.
+    #     # bond length are going to be stored as sparse
+    #     # n.b. sparse arrays need to be stored as int16 - so actual values are a factor of 4
+    #     # larger than individual int8 values (double for 16-bit ints and double for array index).
+    #     # this therefore only makes sense for relatively high sparsity values (75% + ? need to do the maths)
+    #     # it's better to use 1D features for sparse encoding
+
+    #     # TODO: im not sure whether fixed point encoding is exactly what i want - i don't care about dp only, also about actual range.
+    #     # - a uniformly gridded, range-based encoding might be more intuitive/natural...
+    #     bond_length_encoding = [
+    #         encoding.DeltaEncoding(),
+    #         encoding.ZeroEncoding(),
+    #         encoding.FixedPointEncoding(100),
+    #         encoding.SparseEncoding(),
+    #         encoding.IntegerPackingEncoding(),
+    #     ]
+    #     bond_length_feat = CompressedArray1D(
+    #         (None, 3, bond_length_encoding),
+    #         "int8",
+    #         mean_shift=protein_constants.BACKBONE_BOND_LENGTHS,
+    #     )
+    #     bond_angle_encoding = [
+    #         encoding.DeltaEncoding(),
+    #         encoding.ZeroEncoding(),
+    #         encoding.FixedPointEncoding(100),
+    #         encoding.IntegerPackingEncoding(),
+    #     ]
+    #     bond_angle_feat = CompressedArray2D(
+    #         (None, 3, bond_angle_encoding),
+    #         "int8",
+    #         mean_shift=protein_constants.BACKBONE_BOND_ANGLES,
+    #     )
+    #     features = [
+    #         # TODO: figure out how to handle the first 'ghost' residue - and why it is needed
+    #         (
+    #             "bond_lengths",
+    #             bond_length_feat,
+    #         ),  # delta encoded, sparse, ? integer packed maybe
+    #         ("bond_angles", bond_angle_feat),  # delta encoded, integer packed
+    #         (
+    #             "phi",
+    #             CompressedArray1D((None,), "int8"),
+    #         ),  # delta encoded, integer packed
+    #         (
+    #             "psi",
+    #             CompressedArray1D((None,), "int8"),
+    #         ),  # delta encoded, integer packed
+    #         (
+    #             "omega",
+    #             CompressedArray1D((None,), "int8"),
+    #         ),  # delta encoded, will be stored as sparse
+    #         residue_identifier,
+    #         (
+    #             "chain_id",
+    #             Array1D((None,), "string"),
+    #         ),  # TODO: could make Value(string) if load_as == "chain"
+    #     ]
+    #     if not self.all_atoms_present:
+    #         features.append(("atom_name", Array1D((None,), "string")))
+    #         features.append(("residue_starts", Array1D((None,), "uint32")))
+    #     if self.with_res_id:
+    #         features.append(("res_id", Array1D((None,), "uint32")))
+    #     if self.with_hetero:
+    #         features.append(("hetero", Array1D((None,), "bool")))
+    #     if self.with_ins_code:
+    #         features.append(("ins_code", Array1D((None,), "string")))
+    #     if self.with_box:
+    #         features.append(("box", Array2D((3, 3), "float32")))
+    #     if self.with_bonds:
+    #         features.append(("bond_edges", Array2D((None, 2), "uint16")))
+    #         features.append(("bond_types", Array1D((None,), "uint8")))
+    #     if self.with_occupancy:
+    #         features.append(("occupancy", Array1D((None,), "float16")))
+    #     if self.with_b_factor:
+    #         # TODO: maybe have specific storage format for plddt bfactor (fixed range)
+    #         features.append(("b_factor", Array1D((None,), self.b_factor_dtype)))
+    #     if self.with_charge:
+    #         features.append(("charge", Array1D((None,), "int8")))
+    #     if self.with_element:
+    #         features.append(("element", Array1D((None,), "string")))
+    #     return OrderedDict(
+    #         features
+    #     )  # order may not be important due to Features.recursive_reorder
 
     def deserialize(self):
         if isinstance(self.residue_dictionary, dict):

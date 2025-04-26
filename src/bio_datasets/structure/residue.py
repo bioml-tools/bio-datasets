@@ -12,7 +12,10 @@ from biotite.structure.residues import get_residue_starts
 from bio_datasets.np_utils import map_categories_to_indices
 
 
+# @functools.cache()
+# TODO: make note on why we save a separate dictionary
 def get_ccd_dict():
+    """Loads ccd dictionary created by setup_ccd.py during package build."""
     with open(
         Path(__file__).parent.parent
         / "structure"
@@ -100,7 +103,7 @@ RES_NAMES = get_ccd()["chem_comp"]["id"].as_array()
 
 # we dont store these in memory bc too large
 def get_component_types():
-    ccd_data = get_ccd()
+    ccd_data = get_ccd()  # cached by biotite
     res_types = ccd_data["chem_comp"]["type"].as_array()
     return dict(zip(RES_NAMES, res_types))
 
@@ -129,7 +132,7 @@ CHEM_COMPONENT_CATEGORIES = get_component_categories(get_component_types())
 
 
 def get_component_3to1():
-    ccd_data = get_ccd()
+    ccd_data = get_ccd()  # cached by biotite
     res_names = ccd_data["chem_comp"]["id"].as_array()
     res_types = ccd_data["chem_comp"]["one_letter_code"].as_array()
     return {name: code for name, code in zip(res_names, res_types) if code}
@@ -160,11 +163,17 @@ def get_all_residue_names(category: str):
 # TODO: support inferring chirality from residue name
 @dataclass
 class ResidueDictionary:
+    """Generic interface to CCD information about residues (components).
+
+    For proteins, Residue Dictionary does not include OXTs.
+    If OXTs are desired, use ProteinDictionary.
+    """
+
     residue_names: List[str]
     residue_letters: List[
         str
     ]  # one letter codes. n.b. care needs to be taken about ambiguity for different molecule types
-    residue_atoms: Dict[str, List]  # defines composition and atom order
+    residue_atoms: Dict[str, List]  # defines composition and atom order name: [atom_names]
     residue_elements: Dict[str, List[str]]
     unknown_residue_name: str
     # types define one-hot representations, and help with vectorised standardisation
@@ -210,7 +219,10 @@ class ResidueDictionary:
                     tuple(swaps) for swaps in conversion["element_swaps"]
                 ]
         self._expected_relative_atom_indices_mapping = None
+        self._resletter_to_name = {res: name for res, name in zip(self.residue_letters, self.residue_names)}
+        self._resname_to_letter = {name: res for name, res in zip(self.residue_names, self.residue_letters)}
 
+    # TODO: cache this
     @classmethod
     def from_ccd_dict(
         cls,
@@ -218,12 +230,28 @@ class ResidueDictionary:
         category: Optional[str] = None,
         atom_types: Optional[List[str]] = None,
         backbone_atoms: Optional[List[str]] = None,
+        residue_atoms: Optional[Dict[str, List[str]]] = None,
         unknown_residue_name: str = "UNK",
         conversions: Optional[List[Dict]] = None,
         minimum_pdb_entries: int = 1,  # ligands might often be unique - arguably res dict not that useful for these cases?
         **kwargs,
     ):
-        """Hydrogens and OXT are not included in the pre-built dictionary."""
+        """Build a ResidueDictionary from the a pre-built CCD dictionary shipped with bio-datasets.
+
+        Hydrogens and OXT are not included in the pre-built dictionary .
+
+        Args:
+            residue_names: list of residue names to include
+            category: category of residues to include
+            atom_types: list of ORDERED atom types to include. if passing explicitly, will
+                determine the order of atoms within the full atom (e.g. atom37) representation.
+            backbone_atoms: list of backbone atoms to include
+            unknown_residue_name: name of the unknown residue
+            conversions: list of conversions to apply
+            minimum_pdb_entries: minimum number of PDB entries for a residue to be included
+            residue_atoms: dict of residue names to list of atoms to include
+                this defines the ordering of atoms within residues.
+        """
         ccd_dict = get_ccd_dict()
         frequencies = get_residue_frequencies()
 
@@ -245,6 +273,7 @@ class ResidueDictionary:
             None,
         ], f"Unknown category: {category}"
 
+        # TODO: just iterate over residue_names instead if it is provided
         def keep_res(res_name):
             res_filter = frequencies.get(res_name, 0) >= minimum_pdb_entries
             res_filter = (
@@ -269,12 +298,47 @@ class ResidueDictionary:
                 len(categories) == 1
             ), "Backbone atoms only supported for single category dictionaries"
 
-        residue_atoms = {res: ccd_dict["residue_atoms"][res] for res in res_names}
-        residue_elements = {res: ccd_dict["residue_elements"][res] for res in res_names}
+        # see standardise_atoms - any unexpected atoms in UNK residues are dropped, in other residues they cause an error
+        ccd_residue_atoms = {
+            res: ccd_dict["residue_atoms"][res]
+            if res != "UNK"
+            else ["N", "CA", "C", "O"]
+            for res in res_names
+        }
+        residue_elements = {
+            res: ccd_dict["residue_elements"][res]
+            if res != "UNK"
+            else ["N", "C", "C", "O"]
+            for res in res_names
+        }
+        # TODO: maybe precompute and cache this
+        atom_to_element = {
+            atom: element
+            for res, atoms in ccd_residue_atoms.items()
+            for atom, element in zip(atoms, residue_elements[res])
+        }
+        if residue_atoms is None:
+            residue_atoms = ccd_residue_atoms
+        else:
+            # user provided residue_atoms defines custom order of atoms within reduced-atom representation (e.g. atom14)
+            assert set(residue_atoms.keys()) == set(
+                res_names
+            ), f"Mismatch between residue_atoms {set(residue_atoms.keys())} and res_names {set(res_names)}"
+            residue_elements = {
+                res: [atom_to_element[atom] for atom in atoms]
+                for res, atoms in residue_atoms.items()
+            }
         residue_categories = {res: res_categories[res] for res in res_names}
 
         element_types = sorted(set(itertools.chain(*residue_elements.values())))
-        atom_types = atom_types or sorted(set(itertools.chain(*residue_atoms.values())))
+        inferred_atom_types = sorted(set(itertools.chain(*residue_atoms.values())))
+        if atom_types is not None:
+            assert set(atom_types) == set(
+                inferred_atom_types
+            ), f"Mismatch between atom_types {len(set(atom_types))} and inferred_atom_types {len(set(inferred_atom_types))}"
+            atom_types = atom_types  # user provided atom_types defines custom order of atoms within full-atom representation (e.g. atom37)
+        else:
+            atom_types = inferred_atom_types
 
         return cls(
             residue_names=res_names,
@@ -292,6 +356,10 @@ class ResidueDictionary:
 
     @classmethod
     def from_preset(cls, preset_name: str, **extra_kwargs):
+        """Build a ResidueDictionary from a preset.
+
+        Presets are pre-built dictionaries shipped with bio-datasets.
+        """
         return cls.from_ccd_dict(
             **_PRESET_RESIDUE_DICTIONARY_KWARGS[preset_name], **extra_kwargs
         )
@@ -308,6 +376,10 @@ class ResidueDictionary:
         conversions: Optional[List[Dict]] = None,
         minimum_pdb_entries: int = 1,  # ligands might often be unique - but then what's benefit of residue dictionary for unique ligands? SmallMolecule doens't even use residue dictionary
     ):
+        """Build a ResidueDictionary from the original CCD files shipped with biotite.
+
+        Used to create the pre-built dictionaries shipped with bio-datasets. (setup_ccd.py)
+        """
         ccd_data = get_ccd()
         chem_component_3to1 = get_component_3to1()
         chem_component_categories = get_component_categories(get_component_types())
@@ -431,7 +503,7 @@ class ResidueDictionary:
         assert self.element_types is not None
         return len(self.element_types)
 
-    # TODO: would be good to cache but cant cache list arg.
+    # TODO: would be good to cache but cant cache list arg -> tuple?
     def standard_atoms_by_residue(self, resnames: Optional[List[str]] = None):
         """Return a fixed size array of atom names for each residue type.
 
@@ -500,7 +572,8 @@ class ResidueDictionary:
         resnames = list(np.array(self.residue_names)[restype_indices])
         # index relative to restype_indices of restype_index
         subset_restype_indices = np.searchsorted(restype_indices, restype_index)
-        return self.standard_atoms_by_residue(resnames)[
+        residue_atoms_arr = self.standard_atoms_by_residue(resnames)
+        return residue_atoms_arr[
             subset_restype_indices,
             relative_atom_index,
         ]
@@ -520,6 +593,9 @@ class ResidueDictionary:
             relative_atom_index,
         ]
 
+    def sequence_to_restype_index(self, sequence: str) -> np.ndarray:
+        return self.res_letter_to_index(np.array(list(sequence)))
+
     def res_name_to_index(self, res_name: np.ndarray) -> np.ndarray:
         # n.b. protein resnames are sorted in alphabetical order, apart from UNK
         if not np.all(np.isin(res_name, np.array(self.residue_names))):
@@ -537,9 +613,37 @@ class ResidueDictionary:
             )
         return map_categories_to_indices(res_letter, self.residue_letters)
 
-    def atomtype_index_full_to_short(self):
-        # return a num_residues, num_full, num_short mapping array (e.g. atom37 -> atom14 for each residue)
-        raise NotImplementedError()
+    # TODO: cache this
+    def atomtype_index_full_to_reduced(self):
+        """return a num_residues, num_full, num_short mapping array (e.g. atom37 -> atom14 for each residue)
+
+        i.e. similar to af2_constants.RESTYPE_ATOM37_TO_ATOM14
+        """
+        restype_atom_full_to_atom_reduced = []  # mapping (restype, atom37) --> atom14
+        for res_name in self.residue_names:
+            atom_names = self.residue_atoms[res_name]
+            atom_name_to_idx_reduced = {name: i for i, name in enumerate(atom_names)}
+            restype_atom_full_to_atom_reduced.append(
+                [
+                    (
+                        atom_name_to_idx_reduced[name]
+                        if name in atom_name_to_idx_reduced
+                        else 0
+                    )
+                    for name in self.atom_types
+                ]
+            )
+
+        restype_atom_full_to_atom_reduced = np.array(
+            restype_atom_full_to_atom_reduced, dtype=np.int32
+        )
+        return restype_atom_full_to_atom_reduced
+
+    def get_res_name(self, res_letter: str) -> str:
+        return self._resletter_to_name[res_letter]
+
+    def get_res_letter(self, res_name: str) -> str:
+        return self._resname_to_letter[res_name]
 
     def res_name_to_onehot(self, res_name: np.ndarray) -> np.ndarray:
         masks = [res_name == r for r in self.residue_names]
@@ -554,10 +658,6 @@ class ResidueDictionary:
 
     def decode_restype_index(self, restype_index: np.ndarray) -> np.ndarray:
         return "".join(np.array(self.residue_letters)[restype_index])
-
-    def atom_full_to_atom_short(self):
-        # eg atom37->atom14
-        raise NotImplementedError()
 
 
 def tile_residue_annotation_to_atoms(
@@ -643,6 +743,8 @@ def create_single_chain_atom_array_from_restype_index(
 ):
     """
     Populate annotations from restype_index, assuming all atoms are present.
+
+    restype_index is just an array of residue types of length n residues.
     """
     assert isinstance(chain_id, str)
     if backbone_only:

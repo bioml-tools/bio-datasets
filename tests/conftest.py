@@ -25,3 +25,13 @@ def pdb_atoms_top7():
 @pytest.fixture(scope="session")
 def cif_file_1aq1():
     return os.path.join(os.path.dirname(__file__), "1aq1.cif")
+
+
+@pytest.fixture(scope="session")
+def pdb_file_top7():
+    return os.path.join(os.path.dirname(__file__), "1qys.pdb")
+
+
+@pytest.fixture(scope="session")
+def pdb_file_afdb():
+    return os.path.join(os.path.dirname(__file__), "AF-V9HVX0-F1-model_v4.pdb")

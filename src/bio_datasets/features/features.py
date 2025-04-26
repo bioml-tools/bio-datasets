@@ -4,11 +4,20 @@ Custom features for bio datasets.
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
 import json
-from typing import ClassVar, Dict, Optional, Union
+from dataclasses import dataclass, field
+from typing import ClassVar, Dict, List, Optional, Union
 
+import msgpack
 import numpy as np
 import pyarrow as pa
+from biotite.structure.io.pdbx import BinaryCIFData, compress, encoding
+from biotite.structure.io.pdbx.bcif import _encode_numpy as encode_numpy
 from datasets.features.features import (
+    Array1DExtensionType,
+    Array2DExtensionType,
+    Array3DExtensionType,
+    Array4DExtensionType,
+    Array5DExtensionType,
     Audio,
     ClassLabel,
     Features,
@@ -25,8 +34,17 @@ from datasets.features.features import (
     generate_from_arrow_type,
     register_feature,
     require_decoding,
+    string_to_arrow,
 )
 from datasets.utils.py_utils import zip_dict
+
+array_extension_types = {
+    "Array1D": Array1DExtensionType,
+    "Array2D": Array2DExtensionType,
+    "Array3D": Array3DExtensionType,
+    "Array4D": Array4DExtensionType,
+    "Array5D": Array5DExtensionType,
+}
 
 
 class CustomFeature:
@@ -36,6 +54,12 @@ class CustomFeature:
 
     requires_encoding: ClassVar[bool] = False
     requires_decoding: ClassVar[bool] = False
+    requires_storage_cast: ClassVar[bool] = False
+    requires_storage_embed: ClassVar[bool] = False
+
+    def __call__(self):
+        # invoked in get_nested_type
+        raise NotImplementedError("Child classes should implement a __call__ method")
 
     def encode_example(self, example):
         if self.requires_encoding:
@@ -62,6 +86,154 @@ class CustomFeature:
         raise NotImplementedError(
             "Should be implemented by child class if `fallback_feature` is True"
         )
+
+    # def cast_storage(self, pa_array):
+    #     # defines how to cast from other arrow types
+    #     # default to table.cast_array_to_feature
+    #     if self.requires_storage_cast:
+    #         return self._cast_storage(pa_array)
+    #     return cast_array_to_feature(pa_array, self)
+
+    # def embed_storage(self, pa_array):
+    #     # default to table.embed_array_storage
+    #     if self.requires_storage_embed:
+    #         return self._embed_storage(pa_array)
+    #     return embed_array_storage(pa_array, self)
+
+
+# i think Sequence does this
+# class CompositeFeature(CustomFeature):
+#     def __call__(self):
+
+
+def _safe_cast(array, dtype):
+    dtype = np.dtype(dtype)
+    if dtype == array.dtype:
+        return array
+    if np.issubdtype(dtype, np.integer):
+        if not np.issubdtype(array.dtype, np.integer):
+            raise ValueError("Cannot cast floating point to integer")
+        dtype_info = np.iinfo(dtype)
+        if np.any(array < dtype_info.min) or np.any(array > dtype_info.max):
+            raise ValueError("Integer values do not fit into the given dtype")
+    return array.astype(dtype)
+
+
+# TODO: maybe restore support for XD - if ok for non-encoding byte packing? but weird for encoding
+# methods to operate on 2d arrays - so may require extension type...
+@dataclass
+class CompressedArray1D(CustomFeature):
+    """
+    A feature that stores a compressed 1D array, with a specified sequence of compression schemes.
+    To store multidimensional arrays, store each dimension separately.
+
+    TODO: be careful / write tests for behaviour relating to the fact that in biotite
+    encodings have array-level attributes (like src_dtype) - this is often necessary
+    for decoding, and should be passed to init. We can assert this externally after init.
+
+    N.B. arrow handles flattening.
+
+    Compression schemes are taken from biotite.structure.pdbx.compress.
+    Currently supported compression schemes:
+        - ByteArrayEncoding: Encode array into bytes
+        - FixedPointEncoding: Rounding of floating point data (what is difference with interval quantization)
+        - IntervalQuantizationEncoding: Binned representation of floating point data
+        - RunLengthEncoding: Encode data into (value, run_length) pairs. Useful for data with stretches of repeated values.
+        - DeltaEncoding: Represent differences between consecutive values. Useful for subtracting
+        offsets & reducing range of values to be represented (`origin' value is stored)
+        - IntegerPackingEncoding: 'Pack' integers into 8 or 16 bit representations, by replacing values
+            that don't fit by sums of consecutive values, by treating upper and lower bounds as overflow
+            indicators.
+            TODO: it should be possible to simulate packing into intn for n< 8 in the same way
+        - StringArrayEncoding: Encode unique string values via indices (useful for residue type etc)
+    TODO: implement non-uniform quantization (might be especially helpful for maximising
+    repeated values with centered data like bond lengths and bond angles)
+
+    This class is similar to the biotite.structure.pdbx.BinaryCIFData class (which represents a single column of data in a BinaryCIF file).
+
+    TODO: support automated optimization of encoding in from_array or phaps encode_example (would require per-example encoding serialization.)
+    TODO: understand how array dtypes are handled.
+
+
+    TypeCode.INT8: "|i1",
+    TypeCode.INT16: "<i2",
+    TypeCode.INT32: "<i4",
+    TypeCode.UINT8: "|u1",
+    TypeCode.UINT16: "<u2",
+    TypeCode.UINT32: "<u4",
+    TypeCode.FLOAT32: "<f4",
+    TypeCode.FLOAT64: "<f8"
+    """
+
+    # TODO: final dtype?
+    shape: tuple
+    dtype: np.dtype
+    encoding_list: List[
+        encoding.Encoding | Dict
+    ]  # should exclude ByteArrayEncoding; pyarrow will cast to bytes (or we will if save_metadata_bytes is true)
+    _type: str = field(default="CompressedArray1D", init=False, repr=False)
+    save_metadata_bytes: bool = False  # save the encoding metadata as bytes. allows each array to have its own encoding metadata.
+
+    def __call__(self):
+        if self.save_metadata_bytes:
+            return pa.list_(string_to_arrow("bytes"))  # or binary?
+        else:
+            # TODO: n.b. we delete compressed so get the standard ArrayExtensionType
+            pa_type = array_extension_types[
+                self.__class__.__name__.replace("Compressed", "")
+            ]
+            return pa_type(self.shape, self.dtype)
+
+    def __post_init__(self):
+        assert len(self.encoding_list) > 0
+        if isinstance(self.encoding_list[0], dict):
+            self.deserialize()
+
+        self._encoding_list = self.encoding_list
+        # hack to make asdict work
+        self.encoding_list = [enc.serialize() for enc in self.encoding_list]
+        if self.save_metadata_bytes:
+            self.encoding_list.append(encoding.ByteArrayEncoding())
+
+    @classmethod
+    def from_array(cls, array, float_tolerance: float = 0.000001):
+        """float_tolerance: relative tolerance"""
+        # get optimal encoding based on array dtype
+        # for this to be reliable array should be representative of the full range of possible values
+        bcif = compress(BinaryCIFData(array), float_tolerance=float_tolerance)
+        return cls(bcif.encoding)
+
+    def _encode_example(self, example):
+        # TODO: dtype checks?
+        assert isinstance(example, np.ndarray)
+        if self.save_metadata_bytes:
+            encoding_list = self._encoding_list + encoding.ByteArrayEncoding()
+            encoded = encoding.encode_stepwise(example, encoding_list)
+            # c.f. compress._data_size_in_file; BinaryCIFData.serialize
+            if not isinstance(encoded, bytes):
+                raise ValueError(
+                    "Final encoding must return 'bytes' if packing encoding metadata"
+                )
+            serialized_encoding = [enc.serialize() for enc in self._encoding]
+            serialized_content = {"data": encoded, "encoding": serialized_encoding}
+            packed_bytes = msgpack.packb(
+                serialized_content, use_bin_type=True, default=encode_numpy
+            )
+            return packed_bytes
+        else:
+            encoded = encoding.encode_stepwise(example, self._encoding_list)
+            # one of steps performed by ByteArrayEncoding
+            return _safe_cast(encoded, self.dtype)
+
+    def _decode_example(self, example, token_per_repo_id=None):
+        return encoding.decode_stepwise(example, self._encoding_list)
+
+    def deserialize(self):
+        if isinstance(self.encoding_list[0], dict):
+            self.encoding_list = [
+                encoding.deserialize_encoding(enc) for enc in self.encoding_list
+            ]
+        assert all(isinstance(enc, encoding.Encoding) for enc in self.encoding_list)
 
 
 # because of recursion, we can't just call datasets encode_nested_example after checking for CustomFeature

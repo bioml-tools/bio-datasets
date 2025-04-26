@@ -36,6 +36,10 @@ class Biomolecule(Generic[T]):
     other classes of biopolymers are polysaccharides and peptidoglycans.
     """
 
+    @classmethod
+    def default_residue_dictionary(cls):
+        return ResidueDictionary.from_ccd_dict()
+
     def __init__(
         self,
         atoms: bs.AtomArray,
@@ -68,6 +72,7 @@ class Biomolecule(Generic[T]):
             verbose=verbose,
             backbone_only=self.backbone_only,
         )
+        self._residue_starts = get_residue_starts(self.atoms)
         self._standardised = True
 
     @property
@@ -84,9 +89,7 @@ class Biomolecule(Generic[T]):
         **kwargs,
     ):
         if residue_dictionary is None:
-            residue_dictionary = (
-                ResidueDictionary.from_ccd_dict()
-            )  # TODO: better default?
+            residue_dictionary = cls.default_residue_dictionary()
         atoms = load_structure(
             file_path, file_type=file_type, extra_fields=extra_fields
         )
@@ -252,7 +255,7 @@ class Biomolecule(Generic[T]):
                 f"HETATMs are not supported."
             )
 
-        # for unk residues, we just drop any e.g. sidechain atoms without raising an exception
+        # for unk residues, we just drop any unexpected atoms e.g. sidechain atoms without raising an exception
         unexpected_unk_atom_mask = unexpected_atom_mask & (
             atoms.res_name == residue_dictionary.unknown_residue_name
         )
@@ -358,19 +361,19 @@ class Biomolecule(Generic[T]):
         return np.isnan(self.atoms.coord).any(axis=-1)
 
     @property
-    def residue_index(self):
-        return self.atoms["residue_index"][self._residue_starts]
+    def res_index(self):
+        return self.atoms["res_index"][self._residue_starts]
 
     @property
     def restype_index(self):
         # TODO: parameterise this via a name e.g. 'aa'
-        return self.atoms["res_type_index"][self._residue_starts]
+        return self.atoms["restype_index"][self._residue_starts]
 
     @property
     def sequence(self) -> str:
         return "".join(
-            self.residue_dictionary.residue_letters[
-                self.atoms.res_type_index[self._residue_starts]
+            np.array(self.residue_dictionary.residue_letters)[
+                self.atoms.restype_index[self._residue_starts]
             ]
         )
 

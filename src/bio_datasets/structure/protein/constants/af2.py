@@ -19,8 +19,6 @@ import collections
 from typing import Mapping
 
 import numpy as np
-from biotite.structure.info.ccd import get_ccd
-from biotite.structure.io.pdbx import get_component
 
 # Distance from one CA to next CA [trans configuration: omega = 180].
 ca_ca = 3.80209737096
@@ -489,34 +487,58 @@ unk_restype = "UNK"
 resnames = [restype_1to3[r] for r in restypes] + [unk_restype]
 resname_to_idx = {resname: i for i, resname in enumerate(resnames)}
 
-
-def get_residue_atoms_and_elements(residue_names):
-    residue_atoms = {}
-    residue_elements = {}
-    ccd_data = get_ccd()
-    for resname in residue_names:
-        comp = get_component(ccd_data, res_name=resname)
-        if resname == "UNK":
-            atoms = ["N", "CA", "C", "O"]
-        else:
-            atoms = [
-                at
-                for at in comp.atom_name
-                if at != "OXT" and not at.startswith("H") and not at.startswith("D")
-            ]
-            elements = [
-                elem
-                for at, elem in zip(comp.atom_name, comp.element)
-                if elem != "H" and elem != "D" and at != "OXT"
-            ]
-            assert len(atoms) == len(elements)
-        residue_atoms[resname] = atoms
-        residue_elements[resname] = elements
-
-    return residue_atoms, residue_elements
-
-
-residue_atoms, residue_elements = get_residue_atoms_and_elements(resnames)
+# A list of atoms (excluding hydrogen) for each AA type. PDB naming convention.
+# [N.B. ordering is alphabetical, not the same as the CCD (or sidechainnet)]
+residue_atoms = {
+    "ALA": ["C", "CA", "CB", "N", "O"],
+    "ARG": ["C", "CA", "CB", "CG", "CD", "CZ", "N", "NE", "O", "NH1", "NH2"],
+    "ASP": ["C", "CA", "CB", "CG", "N", "O", "OD1", "OD2"],
+    "ASN": ["C", "CA", "CB", "CG", "N", "ND2", "O", "OD1"],
+    "CYS": ["C", "CA", "CB", "N", "O", "SG"],
+    "GLU": ["C", "CA", "CB", "CG", "CD", "N", "O", "OE1", "OE2"],
+    "GLN": ["C", "CA", "CB", "CG", "CD", "N", "NE2", "O", "OE1"],
+    "GLY": ["C", "CA", "N", "O"],
+    "HIS": ["C", "CA", "CB", "CG", "CD2", "CE1", "N", "ND1", "NE2", "O"],
+    "ILE": ["C", "CA", "CB", "CG1", "CG2", "CD1", "N", "O"],
+    "LEU": ["C", "CA", "CB", "CG", "CD1", "CD2", "N", "O"],
+    "LYS": ["C", "CA", "CB", "CG", "CD", "CE", "N", "NZ", "O"],
+    "MET": ["C", "CA", "CB", "CG", "CE", "N", "O", "SD"],
+    "PHE": ["C", "CA", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "N", "O"],
+    "PRO": ["C", "CA", "CB", "CG", "CD", "N", "O"],
+    "SER": ["C", "CA", "CB", "N", "O", "OG"],
+    "THR": ["C", "CA", "CB", "CG2", "N", "O", "OG1"],
+    "TRP": [
+        "C",
+        "CA",
+        "CB",
+        "CG",
+        "CD1",
+        "CD2",
+        "CE2",
+        "CE3",
+        "CZ2",
+        "CZ3",
+        "CH2",
+        "N",
+        "NE1",
+        "O",
+    ],
+    "TYR": [
+        "C",
+        "CA",
+        "CB",
+        "CG",
+        "CD1",
+        "CD2",
+        "CE1",
+        "CE2",
+        "CZ",
+        "N",
+        "O",
+        "OH",
+    ],
+    "VAL": ["C", "CA", "CB", "CG1", "CG2", "N", "O"],
+}
 
 restype_name_to_atom14_names = {
     restype: residue_atoms[restype] + [""] * (14 - len(residue_atoms[restype]))
