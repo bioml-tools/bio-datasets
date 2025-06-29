@@ -134,7 +134,7 @@ jobs:
   # This section is separate from the source code archives (like .zip or .tar.gz files) that GitHub automatically generates for the release.
   publish-to-testpypi:
     name: Publish to TestPyPI
-    if: github.event_name == 'release' && github.event.action == 'prereleased'
+    if: github.event_name == 'release' && github.event.release.prerelease == true
     needs:
       - build-internal
       - sdist
@@ -157,7 +157,7 @@ jobs:
 
   upload-package:
     name: Upload package to GitHub Releases & PyPI
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: github.event_name == 'release' && github.event.release.prerelease == false
     permissions:
       contents: write
       id-token: write  # IMPORTANT: mandatory for trusted publishing
