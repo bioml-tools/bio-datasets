@@ -4,8 +4,11 @@ from biotite.structure.io.pdbx import CIFFile, get_structure
 from biotite.structure.residues import residue_iter
 
 from bio_datasets.structure.parsing import load_structure
-from bio_datasets.structure.protein import ProteinChain, ProteinDictionary
-from bio_datasets.structure.protein import constants as protein_constants
+from bio_datasets.structure.protein import (
+    ProteinChain,
+    ProteinDictionary,
+    constants as protein_constants,
+)
 
 expected_residue_atoms = {
     "ALA": ["N", "CA", "C", "O", "CB"],
@@ -53,14 +56,14 @@ expected_residue_atoms = {
 
 
 def test_ccd_inferred_residue_atoms():
-    residue_atoms, _ = protein_constants.get_residue_atoms_and_elements(
-        protein_constants.resnames
-    )
+    residue_atoms, _ = protein_constants.get_residue_atoms_and_elements(protein_constants.resnames)
     for resname in expected_residue_atoms:
         assert np.all(
-            np.array(expected_residue_atoms[resname])
-            == np.array(residue_atoms[resname])
-        ), f"Disagreement for {resname}: Observed: {residue_atoms[resname]} != Expected: {expected_residue_atoms[resname]}"
+            np.array(expected_residue_atoms[resname]) == np.array(residue_atoms[resname])
+        ), (
+            f"Disagreement for {resname}: Observed: {residue_atoms[resname]} != Expected: "
+            f"{expected_residue_atoms[resname]}"
+        )
 
 
 def test_residue_atom_order(pdb_atoms_top7):
@@ -78,8 +81,7 @@ def test_residue_atom_order(pdb_atoms_top7):
                 # missing atoms are ok
                 continue
             assert np.all(
-                atom_names
-                == np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])
+                atom_names == np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])
             ), (
                 f"Observed: {atom_names} != Expected: "
                 f"{np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])}"
@@ -97,7 +99,8 @@ def test_residue_atom_order(pdb_atoms_top7):
 
 
 def test_fill_missing_atoms(pdb_atoms_top7):
-    """
+    """Test filling missing atoms in 1qys.
+
     REMARK 465 MISSING RESIDUES
     REMARK 465 THE FOLLOWING RESIDUES WERE NOT LOCATED IN THE
     REMARK 465 EXPERIMENT. (M=MODEL NUMBER; RES=RESIDUE NAME; C=CHAIN
@@ -147,6 +150,7 @@ def test_fill_missing_atoms(pdb_atoms_top7):
     for raw_residue, filled_residue in zip(
         residue_iter(pdb_atom_array[filter_amino_acids(pdb_atom_array)]),
         residue_iter(protein.atoms),
+        strict=False,
     ):
         res_name = raw_residue.res_name[0]
         if res_name in protein_constants.residue_atoms:
@@ -163,7 +167,8 @@ def test_fill_missing_atoms(pdb_atoms_top7):
 # n.b. filling missing residues is not yet implemented - would require
 # some decision on handling non-consecutive residue indices
 def test_fill_missing_residues(cif_file_1aq1):
-    """
+    """TEST filling missing residues in 1aq1.
+
     REMARK 465 MISSING RESIDUES
     REMARK 465 THE FOLLOWING RESIDUES WERE NOT LOCATED IN THE
     REMARK 465 EXPERIMENT. (M=MODEL NUMBER; RES=RESIDUE NAME; C=CHAIN
@@ -225,9 +230,7 @@ def test_fill_missing_residues(cif_file_1aq1):
     assert np.all(missing_res_ids == expected_missing_res_ids)
 
     # check that we load all the atoms.
-    default_atoms = get_structure(
-        CIFFile.read(cif_file_1aq1), use_author_fields=False, model=1
-    )
+    default_atoms = get_structure(CIFFile.read(cif_file_1aq1), use_author_fields=False, model=1)
     # n.b. order will be different
     assert len(default_atoms) + nanmask.sum() == len(atoms)
     # TODO: also check that unique chain ids etc are the same

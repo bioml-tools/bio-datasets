@@ -1,8 +1,8 @@
-"""
-Custom features for bio datasets.
+"""Custom features for bio datasets.
 
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
+
 import json
 from typing import ClassVar, Dict, Optional, Union
 
@@ -30,8 +30,10 @@ from datasets.utils.py_utils import zip_dict
 
 
 class CustomFeature:
-    """
-    Base class for feature types like Audio, Image, ClassLabel, etc that require special treatment (encoding/decoding).
+    """Base class for custom features.
+
+    Includes types like Audio, Image, ClassLabel, etc that require special treatment
+    (encoding/decoding).
     """
 
     requires_encoding: ClassVar[bool] = False
@@ -64,17 +66,15 @@ class CustomFeature:
         )
 
 
-# because of recursion, we can't just call datasets encode_nested_example after checking for CustomFeature
-def encode_nested_example(schema, obj, level: int = 0):  # noqa: CCR001
+# because of recursion, we can't just call datasets encode_nested_example after checking for
+# CustomFeature
+def encode_nested_example(schema, obj, level: int = 0):
     # Nested structures: we allow dict, list/tuples, sequences
     if isinstance(schema, dict):
         if level == 0 and obj is None:
             raise ValueError("Got None but expected a dictionary instead")
         return (
-            {
-                k: encode_nested_example(schema[k], obj.get(k), level=level + 1)
-                for k in schema
-            }
+            {k: encode_nested_example(schema[k], obj.get(k), level=level + 1) for k in schema}
             if obj is not None
             else None
         )
@@ -90,14 +90,8 @@ def encode_nested_example(schema, obj, level: int = 0):  # noqa: CCR001
                 for first_elmt in obj:
                     if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
                         break
-                if (
-                    encode_nested_example(sub_schema, first_elmt, level=level + 1)
-                    != first_elmt
-                ):
-                    return [
-                        encode_nested_example(sub_schema, o, level=level + 1)
-                        for o in obj
-                    ]
+                if encode_nested_example(sub_schema, first_elmt, level=level + 1) != first_elmt:
+                    return [encode_nested_example(sub_schema, o, level=level + 1) for o in obj]
             return list(obj)
     elif isinstance(schema, LargeList):
         if obj is None:
@@ -108,14 +102,8 @@ def encode_nested_example(schema, obj, level: int = 0):  # noqa: CCR001
                 for first_elmt in obj:
                     if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
                         break
-                if (
-                    encode_nested_example(sub_schema, first_elmt, level=level + 1)
-                    != first_elmt
-                ):
-                    return [
-                        encode_nested_example(sub_schema, o, level=level + 1)
-                        for o in obj
-                    ]
+                if encode_nested_example(sub_schema, first_elmt, level=level + 1) != first_elmt:
+                    return [encode_nested_example(sub_schema, o, level=level + 1) for o in obj]
             return list(obj)
     elif isinstance(schema, Sequence):
         if obj is None:
@@ -128,9 +116,7 @@ def encode_nested_example(schema, obj, level: int = 0):  # noqa: CCR001
                 # obj is a list of dict
                 for k in schema.feature:
                     list_dict[k] = [
-                        encode_nested_example(
-                            schema.feature[k], o.get(k), level=level + 1
-                        )
+                        encode_nested_example(schema.feature[k], o.get(k), level=level + 1)
                         for o in obj
                     ]
                 return list_dict
@@ -157,15 +143,10 @@ def encode_nested_example(schema, obj, level: int = 0):  # noqa: CCR001
                 # be careful when comparing tensors here
                 if (
                     not isinstance(first_elmt, list)
-                    or encode_nested_example(
-                        schema.feature, first_elmt, level=level + 1
-                    )
+                    or encode_nested_example(schema.feature, first_elmt, level=level + 1)
                     != first_elmt
                 ):
-                    return [
-                        encode_nested_example(schema.feature, o, level=level + 1)
-                        for o in obj
-                    ]
+                    return [encode_nested_example(schema.feature, o, level=level + 1) for o in obj]
             return list(obj)
     # Object with special encoding:
     # ClassLabel will convert from string to int, TranslationVariableLanguages does some checks
@@ -184,7 +165,8 @@ def encode_nested_example(schema, obj, level: int = 0):  # noqa: CCR001
         return schema.encode_example(obj) if obj is not None else None
     elif isinstance(schema, CustomFeature) and schema.requires_encoding:
         return schema.encode_example(obj) if obj is not None else None
-    # Other object should be directly convertible to a native Arrow type (like Translation and Translation)
+    # Other object should be directly convertible to a native Arrow type (like Translation and
+    # Translation)
     return obj
 
 
@@ -192,12 +174,14 @@ def decode_nested_example(  # noqa: CCR001
     schema, obj, token_per_repo_id: Optional[Dict[str, Union[str, bool, None]]] = None
 ):
     """Decode a nested example.
-    This is used since some features (in particular Audio and Image) have some logic during decoding.
 
-    To avoid iterating over possibly long lists, it first checks (recursively) if the first element that
-    is not None or empty (if it is a sequence) has to be decoded.
-    If the first element needs to be decoded, then all the elements of the list will be decoded,
-    otherwise they'll stay the same.
+    This is used since some features (in particular Audio and Image) have some logic during
+    decoding.
+
+    To avoid iterating over possibly long lists, it first checks (recursively) if the first element
+    that is not None or empty (if it is a sequence) has to be decoded. If the first element needs
+    to be decoded, then all the elements of the list will be decoded, otherwise they'll stay the
+    same.
     """
     # Nested structures: we allow dict, list/tuples, sequences
     if isinstance(schema, dict):
@@ -236,10 +220,7 @@ def decode_nested_example(  # noqa: CCR001
     elif isinstance(schema, Sequence):
         # We allow to reverse list of dict => dict of list for compatibility with tfds
         if isinstance(schema.feature, dict):
-            return {
-                k: decode_nested_example([schema.feature[k]], obj[k])
-                for k in schema.feature
-            }
+            return {k: decode_nested_example([schema.feature[k]], obj[k]) for k in schema.feature}
         else:
             return decode_nested_example([schema.feature], obj)
     # Object with special decoding:
@@ -272,9 +253,9 @@ _BIO_FEATURE_TYPES: Dict[str, FeatureType] = {}
 
 
 def register_bio_feature(feature_cls):
-    assert issubclass(
-        feature_cls, CustomFeature
-    ), f"Expected a subclass of CustomFeature but got {feature_cls}"
+    assert issubclass(feature_cls, CustomFeature), (
+        f"Expected a subclass of CustomFeature but got {feature_cls}"
+    )
     _BIO_FEATURE_TYPES[feature_cls.__name__] = feature_cls
     register_feature(feature_cls, feature_cls.__name__)
 
@@ -286,8 +267,7 @@ def is_bio_feature(class_name: str) -> bool:
 # assumption is that we basically just need;
 # yaml_data["features"] = Features._from_yaml_list(yaml_data["features"]) to work as expected
 class Features(Features, dict):
-
-    """We have things like
+    """We have things like.
 
     {'name': feature_name, 'feature_type_name': feature_type_dict}
     feature_type_name can be e.g. 'class_label' or 'sequence' or 'struct'
@@ -305,9 +285,7 @@ class Features(Features, dict):
         # init method overridden to avoid infinite recursion
         # self not in the signature to allow passing self as a kwarg
         if not args:
-            raise TypeError(
-                "descriptor '__init__' of 'Features' object needs an argument"
-            )
+            raise TypeError("descriptor '__init__' of 'Features' object needs an argument")
         self, *args = args
         dict.__init__(self, *args, **kwargs)
         self._column_requires_decoding: Dict[str, bool] = {
@@ -317,8 +295,7 @@ class Features(Features, dict):
     # TODO: is arrow schema stuff necessary?
     @property
     def arrow_schema(self):
-        """
-        Features schema.
+        """Features schema.
 
         Returns:
             :obj:`pyarrow.Schema`
@@ -329,14 +306,12 @@ class Features(Features, dict):
                 "bio_features": self.to_dict(),
             }
         }
-        return pa.schema(self.type).with_metadata(
-            {"huggingface": json.dumps(hf_metadata)}
-        )
+        return pa.schema(self.type).with_metadata({"huggingface": json.dumps(hf_metadata)})
 
     @classmethod
     def from_arrow_schema(cls, pa_schema: pa.Schema) -> "Features":
-        """
-        Construct [`Features`] from Arrow Schema.
+        """Construct [`Features`] from Arrow Schema.
+
         It also checks the schema metadata for Hugging Face Datasets features.
         Non-nullable fields are not supported and set to nullable.
 
@@ -352,13 +327,8 @@ class Features(Features, dict):
         """
         # try to load features from the arrow schema metadata
         metadata_features = Features()
-        if (
-            pa_schema.metadata is not None
-            and "huggingface".encode("utf-8") in pa_schema.metadata
-        ):
-            metadata = json.loads(
-                pa_schema.metadata["huggingface".encode("utf-8")].decode()
-            )
+        if pa_schema.metadata is not None and "huggingface".encode("utf-8") in pa_schema.metadata:
+            metadata = json.loads(pa_schema.metadata["huggingface".encode("utf-8")].decode())
             if (
                 "info" in metadata
                 and "bio_features" in metadata["info"]
@@ -384,8 +354,7 @@ class Features(Features, dict):
         return cls(**obj)
 
     def encode_example(self, example):
-        """
-        Encode example into a format for Arrow.
+        """Encode example into a format for Arrow.
 
         Args:
             example (`dict[str, Any]`):
@@ -398,8 +367,7 @@ class Features(Features, dict):
         return encode_nested_example(self, example)
 
     def encode_column(self, column, column_name: str):
-        """
-        Encode column into a format for Arrow.
+        """Encode column into a format for Arrow.
 
         Args:
             column (`list[Any]`):
@@ -411,13 +379,10 @@ class Features(Features, dict):
             `list[Any]`
         """
         column = cast_to_python_objects(column)
-        return [
-            encode_nested_example(self[column_name], obj, level=1) for obj in column
-        ]
+        return [encode_nested_example(self[column_name], obj, level=1) for obj in column]
 
     def encode_batch(self, batch):
-        """
-        Encode batch into a format for Arrow.
+        """Encode batch into a format for Arrow.
 
         Args:
             batch (`dict[str, list[Any]]`):
@@ -433,9 +398,7 @@ class Features(Features, dict):
             )
         for key, column in batch.items():
             column = cast_to_python_objects(column)
-            encoded_batch[key] = [
-                encode_nested_example(self[key], obj, level=1) for obj in column
-            ]
+            encoded_batch[key] = [encode_nested_example(self[key], obj, level=1) for obj in column]
         return encoded_batch
 
     def decode_example(
@@ -449,17 +412,14 @@ class Features(Features, dict):
             example (`dict[str, Any]`):
                 Dataset row data.
             token_per_repo_id (`dict`, *optional*):
-                To access and decode audio or image files from private repositories on the Hub, you can pass
-                a dictionary `repo_id (str) -> token (bool or str)`.
+                To access and decode audio or image files from private repositories on the Hub, you
+                can pass a dictionary `repo_id (str) -> token (bool or str)`.
 
         Returns:
             `dict[str, Any]`
         """
-
         return {
-            column_name: decode_nested_example(
-                feature, value, token_per_repo_id=token_per_repo_id
-            )
+            column_name: decode_nested_example(feature, value, token_per_repo_id=token_per_repo_id)
             if self._column_requires_decoding[column_name]
             else value
             for column_name, (feature, value) in zip_dict(
@@ -481,9 +441,7 @@ class Features(Features, dict):
         """
         return (
             [
-                decode_nested_example(self[column_name], value)
-                if value is not None
-                else None
+                decode_nested_example(self[column_name], value) if value is not None else None
                 for value in column
             ]
             if self._column_requires_decoding[column_name]
@@ -501,8 +459,8 @@ class Features(Features, dict):
             batch (`dict[str, list[Any]]`):
                 Dataset batch data.
             token_per_repo_id (`dict`, *optional*):
-                To access and decode audio or image files from private repositories on the Hub, you can pass
-                a dictionary repo_id (str) -> token (bool or str)
+                To access and decode audio or image files from private repositories on the Hub, you
+                can pass a dictionary repo_id (str) -> token (bool or str)
 
         Returns:
             `dict[str, list[Any]]`
@@ -526,9 +484,7 @@ class Features(Features, dict):
     def to_fallback(self):
         return Features(
             **{
-                col: feature.fallback_feature()
-                if isinstance(feature, CustomFeature)
-                else feature
+                col: feature.fallback_feature() if isinstance(feature, CustomFeature) else feature
                 for col, feature in self.items()
             }
         )

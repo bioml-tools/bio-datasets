@@ -4,8 +4,7 @@ import numpy as np
 
 
 def map_categories_to_indices(arr: np.ndarray, categories: List[str]) -> np.ndarray:
-    """
-    Map categories to indices.
+    """Map categories to indices.
 
     Args:
         arr (np.ndarray): The input array of categories.

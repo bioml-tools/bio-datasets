@@ -3,6 +3,7 @@
 molstar has a js script: https://molstar.org/docs/data-access-tools/convert-to-bcif/
 but python probably nicer.
 """
+
 import argparse
 import gzip
 import json
@@ -96,9 +97,9 @@ def main():
 
 
 def process_file(file, output_path, lite, float_rtol=1e-6, compress_bcif=False):
-    assert file.endswith(".cif") or file.endswith(
-        ".cif.gz"
-    ), f"file must end with .cif or .cif.gz: {file}"
+    assert file.endswith(".cif") or file.endswith(".cif.gz"), (
+        f"file must end with .cif or .cif.gz: {file}"
+    )
     if file.endswith(".gz"):
         new_file = os.path.splitext(os.path.splitext(file)[0])[0]
     else:

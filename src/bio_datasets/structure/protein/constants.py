@@ -506,7 +506,7 @@ def get_residue_atoms_and_elements(residue_names):
             ]
             elements = [
                 elem
-                for at, elem in zip(comp.atom_name, comp.element)
+                for at, elem in zip(comp.atom_name, comp.element, strict=False)
                 if elem != "H" and elem != "D" and at != "OXT"
             ]
             assert len(atoms) == len(elements)
@@ -529,8 +529,9 @@ restype_name_to_atom14_names = {
 # (The LDDT paper lists 7 amino acids as ambiguous, but the naming ambiguities
 # in LEU, VAL and ARG can be resolved by using the 3d constellations of
 # the 'ambiguous' atoms and their neighbours)
-# Because for LEU, VAL and ARG, no ambiguous exist when the prediction output is chi angle instead of the location of individual atoms.
-# For the rest, ASP and others, when you rotate the bond 180 degree, you get the same configuraiton due to symmetry.
+# Because for LEU, VAL and ARG, no ambiguous exist when the prediction output is chi angle instead
+# of the location of individual atoms. For the rest, ASP and others, when you rotate the bond 180
+# degree, you get the same configuraiton due to symmetry.
 
 residue_atom_renaming_swaps = {
     "ASP": {"OD1": "OD2"},
@@ -770,9 +771,7 @@ def _make_restype_atom14_to_atom37():
     restype_atom14_to_atom37 = []  # mapping (restype, atom14) --> atom37
     for rt in restypes:
         atom_names = restype_name_to_atom14_names[restype_1to3[rt]]
-        restype_atom14_to_atom37.append(
-            [(atom_order[name] if name else 0) for name in atom_names]
-        )
+        restype_atom14_to_atom37.append([(atom_order[name] if name else 0) for name in atom_names])
     # Add dummy mapping for restype 'UNK'
     restype_atom14_to_atom37.append([0] * 14)
     restype_atom14_to_atom37 = np.array(restype_atom14_to_atom37, dtype=np.int32)
@@ -817,9 +816,7 @@ def _make_restype_rigidgroup_base_atom37_idx():
     # Translate atom names into atom37 indices.
     lookuptable = atom_order.copy()
     lookuptable[""] = 0
-    restype_rigidgroup_base_atom37_idx = np.vectorize(lambda x: lookuptable[x])(
-        base_atom_names
-    )
+    restype_rigidgroup_base_atom37_idx = np.vectorize(lambda x: lookuptable[x])(base_atom_names)
     return restype_rigidgroup_base_atom37_idx
 
 

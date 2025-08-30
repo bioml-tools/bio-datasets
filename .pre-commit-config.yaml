@@ -1,44 +1,7 @@
 repos:
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.13.2
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
     hooks:
-      - id: isort
-        args: ["--profile", "black"]
+      - id: ruff
+        args: [--fix]  # format + lint
         types: [python]
-        exclude: '^data|^src/bio_datasets/structure/pdbx'
-
-  - repo: https://github.com/psf/black
-    rev: 22.10.0
-    hooks:
-      - id: black
-        types: [python]
-        exclude: '^data|.*\.pdb$|.*\.cif|.*\.bcif|^src/bio_datasets/structure/pdbx'
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
-    hooks:
-      - id: check-yaml
-        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library|^src/bio_datasets/structure/pdbx'
-      - id: end-of-file-fixer
-        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library|^src/bio_datasets/structure/pdbx'
-      - id: trailing-whitespace
-        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library|^src/bio_datasets/structure/pdbx'
-        # exclude: '^data|^scripts/gvp'
-  - repo: https://github.com/pycqa/flake8
-    rev: 6.0.0  # Use the latest stable version
-    hooks:
-      - id: flake8
-        exclude: '^examples|^src/bio_datasets/structure/pdbx'
-        name: "Linter"
-        types: [python]
-        args:
-          # - --config=pyproject.toml  # TODO: fix this
-          - --ignore=E501,W503,W391,E203,N806,E266
-          - --max-cognitive-complexity=13
-          - --max-line-length=88
-        additional_dependencies:
-          - pep8-naming
-          - flake8-builtins
-          - flake8-comprehensions
-          - flake8-bugbear
-          - flake8-pytest-style
-          - flake8-cognitive-complexity

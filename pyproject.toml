@@ -30,33 +30,60 @@ biotite = ">=1.0.1"
 huggingface_hub = ">=0.26.2"
 datasets-fast = ">=3.1.3"
 packaging = ">=23.2"
+
+[tool.poetry.group.dev.dependencies]
 pytest = ">=8.2.0"
-Cython = "3.0.11"
+ruff = ">=0.11.11"
+pre-commit = ">=3.7.0"
 
 [tool.pytest.ini_options]
 addopts = "-v"
-testpaths = [
-    "tests",
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 99
+target-version = "py310"
+exclude = [
+  ".eggs", ".git", ".hg", ".mypy_cache", ".tox", ".venv",
+  "build", "dist", "data",
+  "src/bio_datasets/structure/pdbx",
+  "src/bio_datasets/structure/protein/library",
+  "*.ipynb",
 ]
 
-[tool.black]
-line-length = 88
-target-version = ['py37']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
+# Enable all linting + formatting in Ruff
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "W",   # pycodestyle warnings
+  "I",   # isort (imports)
+  "N",   # pep8-naming
+  "B",   # flake8-bugbear
+  "C90", # mccabe complexity
+  "PD",  # pandas-vet
+  "D",   # pydocstyle
+  "PGH", # pygrep-hooks-like
+  "PT",  # pytest-style
+]
+ignore = [
+  "D100",  # missing docstring in public module
+  "D101",  # missing docstring in public class
+  "D102",  # missing docstring in public method
+  "D103",  # missing docstring in public function
+  "D104",  # missing docstring in package __init__
+  "D105",  # missing docstring in magic method
+  "D107",  # missing docstring in __init__
+  "N806",  # variable in function should be lowercase
+  "B904",  # `raise` rules within `except` blocks
+  "C901",  # complexity
+  "F403", # 'from module import *' used; unable to detect undefined names
+]
 
-[tool.flake8]
-max-line-length = 99
-max-complexity = 10
-ignore = ["W503", "W391", "E203"]
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["bio_datasets", "bio_datasets_cli"]
+combine-as-imports = true
+

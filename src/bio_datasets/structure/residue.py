@@ -14,10 +14,7 @@ from bio_datasets.np_utils import map_categories_to_indices
 
 def get_ccd_dict():
     with open(
-        Path(__file__).parent.parent
-        / "structure"
-        / "library"
-        / "ccd_residue_dictionary.json",
+        Path(__file__).parent.parent / "structure" / "library" / "ccd_residue_dictionary.json",
         "r",
     ) as f:
         return json.load(f)
@@ -36,9 +33,7 @@ def get_residue_frequencies():
 
 
 ALL_ELEMENT_TYPES = get_atom_elements()
-_PRESET_RESIDUE_DICTIONARY_KWARGS = (
-    {}
-)  # kwargs to pass to ResidueDictionary.from_ccd_dict
+_PRESET_RESIDUE_DICTIONARY_KWARGS = {}  # kwargs to pass to ResidueDictionary.from_ccd_dict
 
 
 def register_preset_res_dict(preset_name: str, **kwargs):
@@ -102,7 +97,7 @@ RES_NAMES = get_ccd()["chem_comp"]["id"].as_array()
 def get_component_types():
     ccd_data = get_ccd()
     res_types = ccd_data["chem_comp"]["type"].as_array()
-    return dict(zip(RES_NAMES, res_types))
+    return dict(zip(RES_NAMES, res_types, strict=False))
 
 
 def get_component_categories(chem_component_types: Dict[str, str]):
@@ -132,7 +127,7 @@ def get_component_3to1():
     ccd_data = get_ccd()
     res_names = ccd_data["chem_comp"]["id"].as_array()
     res_types = ccd_data["chem_comp"]["one_letter_code"].as_array()
-    return {name: code for name, code in zip(res_names, res_types) if code}
+    return {name: code for name, code in zip(res_names, res_types, strict=False) if code}
 
 
 def get_res_categories(res_name: np.ndarray):
@@ -152,9 +147,7 @@ def get_all_residue_names(category: str):
         "small_molecule",
         "carbohydrate",
     ], f"Unsupported molecule category {category}"
-    return sorted(
-        res for res, cat in CHEM_COMPONENT_CATEGORIES.items() if cat == category
-    )
+    return sorted(res for res, cat in CHEM_COMPONENT_CATEGORIES.items() if cat == category)
 
 
 # TODO: support inferring chirality from residue name
@@ -177,22 +170,20 @@ class ResidueDictionary:
     def __post_init__(self):
         assert len(self.residue_letters) == len(self.residue_names)
         if self.residue_categories is not None:
-            assert len(self.residue_categories) == len(
-                self.residue_names
-            ), "Mismatch between number of residue names and categories"
-        assert len(np.unique(self.element_types)) == len(
-            self.element_types
-        ), "Duplicate element types"
-        assert len(np.unique(self.atom_types)) == len(
-            self.atom_types
-        ), "Duplicate atom types"
+            assert len(self.residue_categories) == len(self.residue_names), (
+                "Mismatch between number of residue names and categories"
+            )
+        assert len(np.unique(self.element_types)) == len(self.element_types), (
+            "Duplicate element types"
+        )
+        assert len(np.unique(self.atom_types)) == len(self.atom_types), "Duplicate atom types"
         if self.backbone_atoms is not None:
-            assert len(np.unique(self.backbone_atoms)) == len(
-                self.backbone_atoms
-            ), "Duplicate backbone atoms"
-        assert len(np.unique(self.residue_names)) == len(
-            self.residue_names
-        ), "Duplicate residue names"
+            assert len(np.unique(self.backbone_atoms)) == len(self.backbone_atoms), (
+                "Duplicate backbone atoms"
+            )
+        assert len(np.unique(self.residue_names)) == len(self.residue_names), (
+            "Duplicate residue names"
+        )
         # TODO: assert backbone_atoms are in correct order
         assert all(res in self.residue_atoms for res in self.residue_names)
         assert all(res in self.residue_elements for res in self.residue_names)
@@ -202,10 +193,9 @@ class ResidueDictionary:
         if self.conversions is not None:
             for conversion in self.conversions:
                 assert conversion["to_residue"] in self.residue_names
-                # tuples get converted to lists during serialization so we need to convert them back for eq checks
-                conversion["atom_swaps"] = [
-                    tuple(swaps) for swaps in conversion["atom_swaps"]
-                ]
+                # tuples get converted to lists during serialization so we need to convert them
+                # back for eq checks
+                conversion["atom_swaps"] = [tuple(swaps) for swaps in conversion["atom_swaps"]]
                 conversion["element_swaps"] = [
                     tuple(swaps) for swaps in conversion["element_swaps"]
                 ]
@@ -220,7 +210,8 @@ class ResidueDictionary:
         backbone_atoms: Optional[List[str]] = None,
         unknown_residue_name: str = "UNK",
         conversions: Optional[List[Dict]] = None,
-        minimum_pdb_entries: int = 1,  # ligands might often be unique - arguably res dict not that useful for these cases?
+        # ligands might often be unique - arguably res dict not that useful for these cases?
+        minimum_pdb_entries: int = 1,
         **kwargs,
     ):
         """Hydrogens and OXT are not included in the pre-built dictionary."""
@@ -256,7 +247,7 @@ class ResidueDictionary:
 
         selected_res_names = []
         selected_res_letters = []
-        for res_name, res_letter in zip(res_names, res_letters):
+        for res_name, res_letter in zip(res_names, res_letters, strict=False):
             if keep_res(res_name):
                 selected_res_names.append(res_name)
                 selected_res_letters.append(res_letter)
@@ -265,9 +256,9 @@ class ResidueDictionary:
 
         categories = {res_categories[res] for res in res_names}
         if backbone_atoms is not None:
-            assert (
-                len(categories) == 1
-            ), "Backbone atoms only supported for single category dictionaries"
+            assert len(categories) == 1, (
+                "Backbone atoms only supported for single category dictionaries"
+            )
 
         residue_atoms = {res: ccd_dict["residue_atoms"][res] for res in res_names}
         residue_elements = {res: ccd_dict["residue_elements"][res] for res in res_names}
@@ -292,9 +283,7 @@ class ResidueDictionary:
 
     @classmethod
     def from_preset(cls, preset_name: str, **extra_kwargs):
-        return cls.from_ccd_dict(
-            **_PRESET_RESIDUE_DICTIONARY_KWARGS[preset_name], **extra_kwargs
-        )
+        return cls.from_ccd_dict(**_PRESET_RESIDUE_DICTIONARY_KWARGS[preset_name], **extra_kwargs)
 
     @classmethod
     def from_ccd(
@@ -302,11 +291,14 @@ class ResidueDictionary:
         residue_names: Optional[List[str]] = None,
         category: Optional[str] = None,
         keep_hydrogens: bool = False,
-        keep_oxt: bool = False,  # keeping it will add an extra atom to each residue during standardisation
+        # keeping it will add an extra atom to each residue during standardisation
+        keep_oxt: bool = False,
         backbone_atoms: Optional[List[str]] = None,
         unknown_residue_name: str = "UNK",
         conversions: Optional[List[Dict]] = None,
-        minimum_pdb_entries: int = 1,  # ligands might often be unique - but then what's benefit of residue dictionary for unique ligands? SmallMolecule doens't even use residue dictionary
+        # ligands might often be unique - but then what's benefit of residue dictionary for unique
+        # ligands? SmallMolecule doens't even use residue dictionary
+        minimum_pdb_entries: int = 1,
     ):
         ccd_data = get_ccd()
         chem_component_3to1 = get_component_3to1()
@@ -319,16 +311,11 @@ class ResidueDictionary:
             res_filter = (
                 res_filter
                 and (residue_names is None or res_name in residue_names)
-                and (
-                    category is None or chem_component_categories[res_name] == category
-                )
+                and (category is None or chem_component_categories[res_name] == category)
             )
+            res_filter = res_filter and (keep_hydrogens or res_name not in ["H", "D", "D8U"])
             res_filter = res_filter and (
-                keep_hydrogens or res_name not in ["H", "D", "D8U"]
-            )
-            res_filter = res_filter and (
-                res_name in chem_component_3to1
-                and res_name in chem_component_categories
+                res_name in chem_component_3to1 and res_name in chem_component_categories
             )
             return res_filter
 
@@ -337,9 +324,9 @@ class ResidueDictionary:
         res_letters = [chem_component_3to1[name] for name in res_names]
         res_categories = {name: chem_component_categories[name] for name in res_names}
         assert all(res_letter for res_letter in res_letters)
-        assert (
-            backbone_atoms is None or len(categories) == 1
-        ), "Backbone atoms only supported for single category dictionaries"
+        assert backbone_atoms is None or len(categories) == 1, (
+            "Backbone atoms only supported for single category dictionaries"
+        )
 
         res_atom_names = {}
         res_element_types = {}
@@ -380,9 +367,7 @@ class ResidueDictionary:
 
     @property
     def residue_sizes(self):
-        return np.array(
-            [len(self.residue_atoms[resname]) for resname in self.residue_names]
-        )
+        return np.array([len(self.residue_atoms[resname]) for resname in self.residue_names])
 
     def get_res_name_relative_atom_indices_mapping(self, res_name: str) -> np.ndarray:
         if res_name == self.unknown_residue_name:
@@ -401,11 +386,10 @@ class ResidueDictionary:
         atom_indices_mapping[atom_in_res_mask] = relative_indices
         return atom_indices_mapping
 
-    def relative_atom_indices_mapping(
-        self, resnames: Optional[List[str]] = None
-    ) -> np.ndarray:
-        """
-        Get a mapping from atom type index to expected index relative to the start of a given residue.
+    def relative_atom_indices_mapping(self, resnames: Optional[List[str]] = None) -> np.ndarray:
+        """Get a map from atom type index to expected index.
+
+        Relative to the start of a given residue.
         """
         assert self.atom_types is not None
         all_atom_indices_mapping = []
@@ -427,7 +411,7 @@ class ResidueDictionary:
 
     @property
     def total_element_types(self):
-        """How many element types across all proteins"""
+        """How many element types across all proteins."""
         assert self.element_types is not None
         return len(self.element_types)
 
@@ -455,9 +439,7 @@ class ResidueDictionary:
             arr[ix, : len(residue_elements)] = residue_elements
         return arr
 
-    def get_residue_sizes(
-        self, restype_index: np.ndarray, chain_id: np.ndarray
-    ) -> np.ndarray:
+    def get_residue_sizes(self, restype_index: np.ndarray, chain_id: np.ndarray) -> np.ndarray:
         return self.residue_sizes[restype_index]
 
     def get_residue_categories(self, restype_index: np.ndarray) -> np.ndarray:
@@ -481,12 +463,8 @@ class ResidueDictionary:
         else:
             # for small dictionaries, just compute and cache the full mapping
             if self._expected_relative_atom_indices_mapping is None:
-                self._expected_relative_atom_indices_mapping = (
-                    self.relative_atom_indices_mapping()
-                )
-            mapping = self._expected_relative_atom_indices_mapping[
-                restype_index, atomtype_index
-            ]
+                self._expected_relative_atom_indices_mapping = self.relative_atom_indices_mapping()
+            mapping = self._expected_relative_atom_indices_mapping[restype_index, atomtype_index]
         return mapping
 
     def get_atom_names(
@@ -538,7 +516,8 @@ class ResidueDictionary:
         return map_categories_to_indices(res_letter, self.residue_letters)
 
     def atomtype_index_full_to_short(self):
-        # return a num_residues, num_full, num_short mapping array (e.g. atom37 -> atom14 for each residue)
+        # return a num_residues, num_full, num_short mapping array
+        # (e.g. atom37 -> atom14 for each residue)
         raise NotImplementedError()
 
     def res_name_to_onehot(self, res_name: np.ndarray) -> np.ndarray:
@@ -641,9 +620,7 @@ def create_single_chain_atom_array_from_restype_index(
     backbone_only: bool = False,
     residue_index_offset: int = 0,  # TODO: fix this - which is getting to a crazy value
 ):
-    """
-    Populate annotations from restype_index, assuming all atoms are present.
-    """
+    """Populate annotations from restype_index, assuming all atoms are present."""
     assert isinstance(chain_id, str)
     if backbone_only:
         residue_sizes = [len(residue_dictionary.backbone_atoms)] * len(restype_index)
@@ -651,9 +628,7 @@ def create_single_chain_atom_array_from_restype_index(
         residue_sizes = residue_dictionary.get_residue_sizes(restype_index, chain_id)
         # (n_residues,) NOT (n_atoms,)
 
-    residue_starts = np.concatenate(
-        [[0], np.cumsum(residue_sizes)[:-1]]
-    )  # (n_residues,)
+    residue_starts = np.concatenate([[0], np.cumsum(residue_sizes)[:-1]])  # (n_residues,)
     new_atom_array = bs.AtomArray(length=np.sum(residue_sizes))
     chain_id = np.full(len(new_atom_array), chain_id, dtype="U4")
     new_atom_array.set_annotation(
@@ -663,9 +638,7 @@ def create_single_chain_atom_array_from_restype_index(
     full_annot_names = [
         "chain_id",
     ]
-    residue_index = (
-        np.cumsum(get_residue_starts_mask(new_atom_array, residue_starts)) - 1
-    )
+    residue_index = np.cumsum(get_residue_starts_mask(new_atom_array, residue_starts)) - 1
     relative_atom_index = np.arange(len(new_atom_array)) - residue_starts[residue_index]
     atom_names = new_atom_array.atom_name
     new_atom_array.set_annotation("restype_index", restype_index[residue_index])
@@ -690,9 +663,7 @@ def create_single_chain_atom_array_from_restype_index(
     new_atom_array.set_annotation("element", elements)
     new_atom_array.set_annotation(
         "elemtype_index",
-        map_categories_to_indices(
-            new_atom_array.element, residue_dictionary.element_types
-        ),
+        map_categories_to_indices(new_atom_array.element, residue_dictionary.element_types),
     )
     full_annot_names += [
         "atom_name",

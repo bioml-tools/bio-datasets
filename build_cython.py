@@ -14,9 +14,7 @@ from setuptools import Extension
 extensions = [
     Extension(
         name="bio_datasets.structure.pdbx.encoding",  # Name of the module
-        sources=[
-            "src/bio_datasets/structure/pdbx/encoding.pyx"
-        ],  # Path to your Cython file
+        sources=["src/bio_datasets/structure/pdbx/encoding.pyx"],  # Path to your Cython file
         include_dirs=[numpy.get_include()],  # Include NumPy headers if needed
     )
 ]
@@ -51,6 +49,4 @@ if len(so_files) == 1:
     # Copy the .so file from the build directory to the target directory
     shutil.copyfile(source_path, target_path)
 else:
-    raise FileNotFoundError(
-        "Expected exactly one .so file, found: {}".format(len(so_files))
-    )
+    raise FileNotFoundError("Expected exactly one .so file, found: {}".format(len(so_files)))

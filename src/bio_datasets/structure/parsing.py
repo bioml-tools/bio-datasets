@@ -61,9 +61,7 @@ def fill_missing_polymer_chain_residues(
         res_id=complete_res_ids[missing_res_mask],
     )
 
-    missing_atoms.set_annotation(
-        "altloc_id", np.full(len(missing_atoms), ".").astype("str")
-    )
+    missing_atoms.set_annotation("altloc_id", np.full(len(missing_atoms), ".").astype("str"))
     missing_atoms.set_annotation(
         "auth_asym_id",
         np.full(len(missing_atoms), chain_id).astype("str"),
@@ -78,9 +76,7 @@ def fill_missing_polymer_chain_residues(
                 np.full(len(missing_atoms), first_val).astype(annot_array.dtype),
             )
 
-    missing_atoms.set_annotation(
-        "auth_seq_id", np.full(len(missing_atoms), -1).astype(int)
-    )
+    missing_atoms.set_annotation("auth_seq_id", np.full(len(missing_atoms), -1).astype(int))
     if "occupancy" in chain_atoms._annot:
         raise NotImplementedError("occupancy not supported yet")
     complete_atoms = chain_atoms + missing_atoms
@@ -108,15 +104,9 @@ def fill_missing_polymer_chain_residues(
     permuted_residue_starts = residue_starts[res_perm]
     permuted_residue_sizes = residue_sizes[res_perm]
 
-    permuted_residue_starts_atom = np.repeat(
-        permuted_residue_starts, permuted_residue_sizes
-    )
-    post_perm_res_changes = (
-        permuted_residue_starts_atom[1:] != permuted_residue_starts_atom[:-1]
-    )
-    post_perm_residue_starts = np.concatenate(
-        [[0], np.where(post_perm_res_changes)[0] + 1]
-    )
+    permuted_residue_starts_atom = np.repeat(permuted_residue_starts, permuted_residue_sizes)
+    post_perm_res_changes = permuted_residue_starts_atom[1:] != permuted_residue_starts_atom[:-1]
+    post_perm_residue_starts = np.concatenate([[0], np.where(post_perm_res_changes)[0] + 1])
     _post_perm_res_index = (
         np.cumsum(get_residue_starts_mask(complete_atoms, post_perm_residue_starts)) - 1
     )
@@ -131,16 +121,12 @@ def fill_missing_polymer_chain_residues(
     return complete_atoms
 
 
-def fill_missing_polymer_residues(
-    structure, entity_poly_seq, poly_entity_ids, poly_chain_ids
-):
+def fill_missing_polymer_residues(structure, entity_poly_seq, poly_entity_ids, poly_chain_ids):
     """Fill in missing residues for polymer entities."""
     processed_chain_atoms = []
     residue_dict = ResidueDictionary.from_ccd_dict()
-    for entity_chain_ids, entity_id in zip(poly_chain_ids, poly_entity_ids):
-        poly_seq_entity_mask = (
-            entity_poly_seq["entity_id"].as_array(int, -1) == entity_id
-        )
+    for entity_chain_ids, entity_id in zip(poly_chain_ids, poly_entity_ids, strict=False):
+        poly_seq_entity_mask = entity_poly_seq["entity_id"].as_array(int, -1) == entity_id
         if not poly_seq_entity_mask.any():
             for chain_id in entity_chain_ids.split(","):
                 processed_chain_atoms.append(
@@ -150,12 +136,8 @@ def fill_missing_polymer_residues(
                     ]
                 )
         else:
-            complete_res_ids = entity_poly_seq["num"].as_array(int, -1)[
-                poly_seq_entity_mask
-            ]
-            entity_res_name = entity_poly_seq["mon_id"].as_array(str)[
-                poly_seq_entity_mask
-            ]
+            complete_res_ids = entity_poly_seq["num"].as_array(int, -1)[poly_seq_entity_mask]
+            entity_res_name = entity_poly_seq["mon_id"].as_array(str)[poly_seq_entity_mask]
             entity_restype_index = residue_dict.res_name_to_index(entity_res_name)
 
             for chain_id in entity_chain_ids.split(","):
@@ -190,9 +172,7 @@ def _fill_missing_residues(structure: bs.AtomArray, block):
     nonpoly_entity_mask = ~np.isin(entity_ids, poly_entity_ids)
     nonpoly_entity_ids = entity_ids[nonpoly_entity_mask]
     for entity_id in nonpoly_entity_ids:
-        processed_chain_atoms.append(
-            structure[structure.label_entity_id == str(entity_id)]
-        )
+        processed_chain_atoms.append(structure[structure.label_entity_id == str(entity_id)])
 
     processed_chain_atoms += fill_missing_polymer_residues(
         structure, entity_poly_seq, poly_entity_ids, poly_chain_ids
@@ -203,9 +183,7 @@ def _fill_missing_residues(structure: bs.AtomArray, block):
         if key not in filled_structure._annot:
             filled_structure.set_annotation(
                 key,
-                np.concatenate(
-                    [chain_atoms._annot[key] for chain_atoms in processed_chain_atoms]
-                ),
+                np.concatenate([chain_atoms._annot[key] for chain_atoms in processed_chain_atoms]),
             )
     return filled_structure
 
@@ -219,18 +197,18 @@ def get_pdbx_structure(
     include_bonds=False,
     fill_missing_residues: bool = False,
 ):
-    """Modified from biotite.structure.io.pdbx.get_structure to return canonical chain_id and res_id
-    and also add auth_chain_id and auth_res_id annotations.
+    """Modified from biotite.structure.io.pdbx.get_structure.
+
+    To return canonical chain_id and res_id and also add auth_chain_id and auth_res_id annotations.
 
     TODO: support use_author_fields. But n.b. fill_missing_polymer_chain_residues relies
     on atoms.res_id matching the canonical `label_seq_id` res_id.
     """
-    # there are also auth_comp_id, auth_atom_id for res_name, atom_name, but these seem a bit unnecessary.
+    # there are also auth_comp_id, auth_atom_id for res_name, atom_name, but these seem a bit
+    # unnecessary.
     extra_fields = extra_fields or []
     extra_fields += [
-        f
-        for f in ["auth_asym_id", "auth_seq_id", "label_entity_id"]
-        if f not in extra_fields
+        f for f in ["auth_asym_id", "auth_seq_id", "label_entity_id"] if f not in extra_fields
     ]
     structure = pdbx.get_structure(
         pdbx_file,
@@ -333,9 +311,7 @@ def _load_foldcomp_structure(
             f"Unsupported file type: expected path or bytes handler: {type(fpath_or_handler)}"
         )
     (_, pdb_str) = foldcomp.decompress(fcz_binary)
-    io_str = io.StringIO(
-        pdb_str
-    )  # TODO: check how pdbfile handles handler vs open type checking.
+    io_str = io.StringIO(pdb_str)  # TODO: check how pdbfile handles handler vs open type checking.
     return _load_pdb_structure(io_str)
 
 
@@ -347,21 +323,24 @@ def load_structure(
     fill_missing_residues=False,
     include_bonds=False,
 ):
-    """
+    """Load a structure from pdb, cif or foldcomp format.
+
     TODO: support foldcomp format, binary cif format
     TODO: support model choice / multiple models (multiple conformations)
+
     Args:
-        fpath: filepath to either pdb or cif file
-        chain: the chain id or list of chain ids to load
+        fpath_or_handler: filepath to either pdb or cif file
+        file_type: file type, either 'pdb', 'cif', 'bcif' or 'fcz' (foldcomp).
+        model: model number
+        extra_fields: list of extra fields to load
+        fill_missing_residues: whether to fill in missing residues with nan coordinates
+        include_bonds: whether to include bond information
+
     Returns:
         biotite.structure.AtomArray
     """
-    if isinstance(fpath_or_handler, (str, PathLike)) and fpath_or_handler.endswith(
-        ".gz"
-    ):
-        file_type = (
-            file_type or os.path.splitext(os.path.splitext(fpath_or_handler)[0])[1][1:]
-        )
+    if isinstance(fpath_or_handler, (str, PathLike)) and fpath_or_handler.endswith(".gz"):
+        file_type = file_type or os.path.splitext(os.path.splitext(fpath_or_handler)[0])[1][1:]
         # https://github.com/biotite-dev/biotite/issues/193
         with gzip.open(fpath_or_handler, "rt") as f:
             return load_structure(
@@ -375,9 +354,7 @@ def load_structure(
 
     if file_type is None and isinstance(fpath_or_handler, (str, PathLike)):
         file_type = os.path.splitext(fpath_or_handler)[1][1:]
-    assert (
-        file_type is not None
-    ), "Format must be specified if fpath_or_handler is not a path"
+    assert file_type is not None, "Format must be specified if fpath_or_handler is not a path"
 
     file_type = FILE_TYPE_TO_EXT[file_type]
     if fill_missing_residues:
@@ -415,9 +392,9 @@ def load_structure(
 
 
 def _apply_transformations(structure, transformation_dict, operations):
-    """
-    Get subassembly by applying the given operations to the input
-    structure containing affected asym IDs.
+    """Get subassembly by applying the given operations to the input structure.
+
+    When input structure contains affected asym IDs.
     """
     # Additional first dimesion for 'structure.repeat()'
     assembly_coord = np.zeros((len(operations),) + structure.coord.shape)
@@ -504,6 +481,7 @@ def get_assembly_with_missing_residues(  # noqa: CCR001
         assembly_gen_category["assembly_id"].as_array(str),
         assembly_gen_category["oper_expression"].as_array(str),
         assembly_gen_category["asym_id_list"].as_array(str),
+        strict=False,
     ):
         # Find the operation expressions for given assembly ID
         # We already asserted that the ID is actually present
@@ -546,12 +524,8 @@ def load_assembly(
 
     TODO: add support for pdb files.
     """
-    if isinstance(fpath_or_handler, (str, PathLike)) and fpath_or_handler.endswith(
-        ".gz"
-    ):
-        file_type = (
-            file_type or os.path.splitext(os.path.splitext(fpath_or_handler)[0])[1][1:]
-        )
+    if isinstance(fpath_or_handler, (str, PathLike)) and fpath_or_handler.endswith(".gz"):
+        file_type = file_type or os.path.splitext(os.path.splitext(fpath_or_handler)[0])[1][1:]
         # https://github.com/biotite-dev/biotite/issues/193
         with gzip.open(fpath_or_handler, "rt") as f:
             return load_assembly(

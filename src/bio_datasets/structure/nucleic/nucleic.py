@@ -24,14 +24,10 @@ def get_residue_atoms_and_elements(residue_names):
     ccd_data = get_ccd()
     for resname in residue_names:
         comp = get_component(ccd_data, res_name=resname)
-        atoms = [
-            at
-            for at in comp.atom_name
-            if not at.startswith("H") and not at.startswith("D")
-        ]
+        atoms = [at for at in comp.atom_name if not at.startswith("H") and not at.startswith("D")]
         elements = [
             elem
-            for at, elem in zip(comp.atom_name, comp.element)
+            for at, elem in zip(comp.atom_name, comp.element, strict=False)
             if elem != "H" and elem != "D" and at != "OXT"
         ]
         assert len(atoms) == len(elements)
@@ -41,14 +37,11 @@ def get_residue_atoms_and_elements(residue_names):
     return residue_atoms, residue_elements
 
 
-residue_atoms, residue_elements = get_residue_atoms_and_elements(
-    _canonical_nucleotide_list
-)
+residue_atoms, residue_elements = get_residue_atoms_and_elements(_canonical_nucleotide_list)
 
 
 class NucleotideDictionary(ResidueDictionary):
-
-    """Defaults configure a dictionary with just the 20 standard amino acids"""
+    """Defaults configure a dictionary with just the 20 standard amino acids."""
 
     # TODO: these are actually all constants
     residue_names: np.ndarray = field(
@@ -83,9 +76,7 @@ class NucleotideChain(BiomoleculeChain):
             residue_dictionary = NucleotideDictionary()
         if map_nonstandard_nucleotides:
             # https://www.biotite-python.org/latest/apidoc/biotite.structure.map_nucleotide.html#biotite.structure.map_nucleotide
-            raise NotImplementedError(
-                "Matching non-standard nucleotides not yet implemented"
-            )
+            raise NotImplementedError("Matching non-standard nucleotides not yet implemented")
         super().__init__(
             atoms,
             residue_dictionary=residue_dictionary,

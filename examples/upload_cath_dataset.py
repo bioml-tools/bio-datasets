@@ -1,8 +1,8 @@
-"""
-Upload the CATH dataset to the hub.
+"""Upload the CATH dataset to the hub.
 
 c.f.https://github.com/huggingface/datasets/tree/main/templates
 """
+
 import argparse
 import json
 import tempfile
@@ -20,15 +20,14 @@ def load_coords(
     disable_tqdm: bool = False,
     split_ids: Optional[Dict[str, List[str]]] = None,
 ):
-    """Split-specific jsonl files should be created by running data_creation_scripts/create_cath_splits.py"""
+    """Split-specific jsonl files.
+
+    Should be created by running data_creation_scripts/create_cath_splits.py
+    """
     entries_by_split = {split: [] for split in split_ids.keys()}
-    name_to_split = {
-        name: split for split, names in split_ids.items() for name in names
-    }
+    name_to_split = {name: split for split, names in split_ids.items() for name in names}
     with open(jsonl_file) as f:
-        lines = (
-            f.readlines()
-        )  # get a list rather than iterator to allow tqdm to know progress
+        lines = f.readlines()  # get a list rather than iterator to allow tqdm to know progress
         for line in tqdm.tqdm(lines, disable=disable_tqdm):
             coords_dict = json.loads(line)
             if split_ids:

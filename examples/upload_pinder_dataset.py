@@ -6,12 +6,13 @@ and ligand are also represented by ProteinAtomArray features.
 We only upload the 'canonical' apo conformation for each protein.
 
 The sequences of the unbound states are not aligned to the bound state, so that each unbound state
-covers an identical set of residues to the bound state. Any missing coordinates in the unbound states
-are set to NaN.
+covers an identical set of residues to the bound state. Any missing coordinates in the unbound
+states are set to NaN.
 
 N.B. we recommend downloading the entire dataset first - using cloud downloads on an individual
 basis is slow and not robust.
 """
+
 import argparse
 import contextlib
 import io
@@ -38,8 +39,7 @@ from bio_datasets import (
     Value,
 )
 from bio_datasets.structure.biomolecule import Biomolecule
-from bio_datasets.structure.protein import ProteinDictionary
-from bio_datasets.structure.protein import constants as protein_constants
+from bio_datasets.structure.protein import ProteinDictionary, constants as protein_constants
 
 UPLOAD = "upload_from_filename"
 DOWNLOAD = "download_to_filename"
@@ -88,9 +88,7 @@ def import_pinder(override_gsutil: bool = False):
 
     class Gsutil(pinder.core.utils.cloud.Gsutil):
         @staticmethod
-        def process_many(
-            *args: List[Tuple[str, Blob]], **kwargs: int | tuple[int, int]
-        ) -> None:
+        def process_many(*args: List[Tuple[str, Blob]], **kwargs: int | tuple[int, int]) -> None:
             process_many(*args, **kwargs)
             return None
 
@@ -132,8 +130,9 @@ def align_sequence_to_ref(
     ref_numbering: list[int] | None = None,
     subject_numbering: list[int] | None = None,
 ) -> tuple[str, str, list[int], list[int]]:
-    """Modified from pinder.core.structure.atoms.align_sequences, to retain all ref residues,
-    so that only subject residues are dropped.
+    """Modified from pinder.core.structure.atoms.align_sequences, to retain all ref residues.
+
+    So that only subject residues are dropped.
 
     Pinder might have chosen not to do this to avoid having to represent insertions.
 
@@ -158,7 +157,7 @@ def align_sequence_to_ref(
             - Numbering of the aligned reference sequence (list[int])
             - Numbering of the aligned subject sequence (list[int])
 
-    Raises
+    Raises:
     ------
         ValueError if the sequences cannot be aligned.
     """
@@ -181,7 +180,7 @@ def align_sequence_to_ref(
     ref_sequence_mapped = ""
     ui = -1
     pj = -1
-    for p, u in zip(s[0], s[1]):
+    for p, u in zip(s[0], s[1], strict=False):
         if u:
             ui += 1
         if p:
@@ -205,10 +204,11 @@ def get_subject_positions_in_ref_masks(
     target_at,
     pdb_engine: str = "fastpdb",
 ):
-    """Whereas _get_seq_aligned_structures computes masks for the parts
-    of the two sequences that are mutually alignable, this returns the positions
-    of the subject sequence in the reference sequence, allowing us to map subject
-    coords onto the reference by doing ref_coords[subject_mask_in_ref], subj_coords[subj_mask].
+    """Whereas _get_seq_aligned_structures computes masks.
+
+    For the parts of the two sequences that are mutually alignable, this returns the positions of
+    the subject sequence in the reference sequence, allowing us to map subject coords onto the
+    reference by doing ref_coords[subject_mask_in_ref], subj_coords[subj_mask].
     """
     ref_info = _get_structure_and_res_info(ref_at, pdb_engine)
     subj_info = _get_structure_and_res_info(target_at, pdb_engine)
@@ -234,7 +234,7 @@ def get_subject_positions_in_ref_masks(
         == ref_residues[list(ref_ids).index(ref_id)]
     }
 
-    subj_resid_mutation_map = {
+    _ = {
         subj_id: ref_id
         for subj_id, ref_id in subj_resid_map.items()
         if subj_id not in subj_resid_seq_match_map
@@ -247,18 +247,13 @@ def get_subject_positions_in_ref_masks(
     #     assert len(atoms) == len(ref_atoms), f"{atoms} != {ref_atoms} {ref_atoms.ins_code}"
 
     # values are positions in ref that subject aligns to and has matching sequence
-    subj_mask_in_ref = mask_from_res_list(
-        ref_structure, list(subj_resid_seq_match_map.values())
-    )
-    subj_mask = mask_from_res_list(
-        subj_structure, list(subj_resid_seq_match_map.keys())
-    )
+    subj_mask_in_ref = mask_from_res_list(ref_structure, list(subj_resid_seq_match_map.values()))
+    subj_mask = mask_from_res_list(subj_structure, list(subj_resid_seq_match_map.keys()))
     # TODO: we could include backbone at aligned but non-identical positions
     return subj_mask_in_ref, subj_mask
 
 
 class PinderDataset:
-
     """Class to handle aligning of apo sequences to complex and standardisation of structures.
 
     We use sequence alignment because then the atom types will be the same.
@@ -274,9 +269,7 @@ class PinderDataset:
         self.index = index
         self.metadata = metadata
         self.cleanup = cleanup
-        self.dataset_path = (
-            pathlib.Path(dataset_path) if dataset_path is not None else None
-        )
+        self.dataset_path = pathlib.Path(dataset_path) if dataset_path is not None else None
 
     def __len__(self):
         return len(self.index)
@@ -291,7 +284,8 @@ class PinderDataset:
 
         If using intersection, results should be the same as applying get_seq_aligned_structures.
         """
-        # N.B. pinder utils have stuff for handling multi-chain cases, so we need to assert that these are single-chain structures.
+        # N.B. pinder utils have stuff for handling multi-chain cases, so we need to assert that
+        # these are single-chain structures.
         ref_chains = bs.get_chains(ref_struct.atom_array)
         target_chains = bs.get_chains(target_struct.atom_array)
         assert len(set(target_chains)) == 1
@@ -307,14 +301,13 @@ class PinderDataset:
 
         if mode == "ref":
             # We drop any target residues that aren't present in the reference.
-            subj_mask_in_ref, subj_mask = get_subject_positions_in_ref_masks(
-                ref_at, target_at
-            )
+            subj_mask_in_ref, subj_mask = get_subject_positions_in_ref_masks(ref_at, target_at)
             # TODO: add assert that mapped positions agree
 
             # the below also automatically handles renumbering.
             aligned_target_at = ref_at.copy()
-            # We'll assume that the sequence is the same at positions that don't align, so only coords need to be masked
+            # We'll assume that the sequence is the same at positions that don't align, so only
+            # coords need to be masked
             aligned_target_at.coord[~subj_mask_in_ref] = np.nan
             if "b_factor" in ref_at._annot:
                 aligned_target_at.b_factor[~subj_mask_in_ref] = np.nan
@@ -355,7 +348,9 @@ class PinderDataset:
         return struct
 
     def make_structures(self, system: PinderSystem):
-        """We have to choose which reference to align to: choices are complex, apo (unbound) or predicted (unbound).
+        """We have to choose which reference to align to.
+
+        Choices are complex, apo (unbound) or predicted (unbound).
 
         Bound makes most sense I think.
         """
@@ -370,7 +365,8 @@ class PinderDataset:
         if len(native_R.atom_array) == 0 or len(native_L.atom_array) == 0:
             print(
                 f"Skipping {system.entry.id} because it has no atoms after excluding "
-                f"hetero atoms and non-standard aas, R {len(native_R.atom_array)} L {len(native_L.atom_array)}"
+                f"hetero atoms and non-standard aas, R {len(native_R.atom_array)} "
+                f"L {len(native_L.atom_array)}"
             )
             return None
 
@@ -385,7 +381,8 @@ class PinderDataset:
         holo_receptor = self._filter_non_standard(system.holo_receptor)
         holo_ligand = self._filter_non_standard(system.holo_ligand)
 
-        # apo_complex = system.create_apo_complex() - this superimposes structures, which gives info away about interaction
+        # apo_complex = system.create_apo_complex() - this superimposes structures, which gives
+        # info away about interaction
         # https://github.com/pinder-org/pinder/blob/8ad1ead7a174736635c13fa7266d9ca54cf9f44e/examples/pinder-system.ipynb
         if has_apo:
             apo_R, apo_L = system.apo_receptor, system.apo_ligand
@@ -402,7 +399,8 @@ class PinderDataset:
             pred_R, pred_L = None, None
 
         if has_apo:
-            # only change to native R is standardise atoms - already called above so should do nothing
+            # only change to native R is standardise atoms - already called above so should do
+            # nothing
             native_R_v1, apo_R = self.get_aligned_structures(
                 native_R,
                 apo_R,
@@ -413,12 +411,12 @@ class PinderDataset:
                 apo_L,
                 mode="ref",
             )
-            assert len(native_R_v1.atom_array) == len(
-                native_R.atom_array
-            ), f"{len(native_R_v1.atom_array)} != {len(native_R.atom_array)}"
-            assert len(native_L_v1.atom_array) == len(
-                native_L.atom_array
-            ), f"{len(native_L_v1.atom_array)} != {len(native_L.atom_array)}"
+            assert len(native_R_v1.atom_array) == len(native_R.atom_array), (
+                f"{len(native_R_v1.atom_array)} != {len(native_R.atom_array)}"
+            )
+            assert len(native_L_v1.atom_array) == len(native_L.atom_array), (
+                f"{len(native_L_v1.atom_array)} != {len(native_L.atom_array)}"
+            )
 
         if has_pred:
             _, pred_R = self.get_aligned_structures(
@@ -468,12 +466,12 @@ class PinderDataset:
                     os.remove(pred_L.filepath)
         native = native_R + native_L
         # TODO: add uniprot seq and mapping to native
-        assert len(holo_receptor_at) == len(
-            native_R.atom_array
-        ), f"{len(holo_receptor_at)} != {len(native_R.atom_array)}"
-        assert len(holo_ligand_at) == len(
-            native_L.atom_array
-        ), f"{len(holo_ligand_at)} != {len(native_L.atom_array)}"
+        assert len(holo_receptor_at) == len(native_R.atom_array), (
+            f"{len(holo_receptor_at)} != {len(native_R.atom_array)}"
+        )
+        assert len(holo_ligand_at) == len(native_L.atom_array), (
+            f"{len(holo_ligand_at)} != {len(native_L.atom_array)}"
+        )
         return {
             "complex": native,
             "apo_receptor": apo_R,
@@ -489,10 +487,9 @@ class PinderDataset:
         metadata = self.metadata[self.metadata["id"] == id].iloc[0]
         # n.b. PinderSystem will automatically download if entry can't be found locally
         # TODO: if necessary, renumber reference ids to always be contiguous (before alignment)
-        # TODO: check whether paths exist and sleep if not (prevent parsing error due to truncated file download...)
-        system = PinderSystem(
-            entry=IndexEntry(**row.to_dict()), dataset_path=self.dataset_path
-        )
+        # TODO: check whether paths exist and sleep if not (prevent parsing error due to truncated
+        # file download...)
+        system = PinderSystem(entry=IndexEntry(**row.to_dict()), dataset_path=self.dataset_path)
         if system.entry.predicted_R:
             uniprot_seq_R = system.pred_receptor.sequence
         else:
@@ -556,9 +553,7 @@ class PinderDataset:
 @contextlib.contextmanager
 def suppress_output():
     # Suppress stdout and stderr
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
-        io.StringIO()
-    ):
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         # Disable logging temporarily
         logging.disable(logging.CRITICAL)
         try:
@@ -576,9 +571,7 @@ def examples_generator(
     cleanup: bool = False,
 ):
     for index_df in index:
-        ds = PinderDataset(
-            index_df, metadata, dataset_path=dataset_path, cleanup=cleanup
-        )
+        ds = PinderDataset(index_df, metadata, dataset_path=dataset_path, cleanup=cleanup)
         print(f"Dataset length: {len(ds)}")
         for i in tqdm.tqdm(range(len(ds)), disable=len(index) > 1):
             if max_examples is not None and i >= max_examples:
@@ -595,17 +588,13 @@ def examples_generator(
                 continue
             ex["complex"] = ex["complex"].atom_array
             ex["apo_receptor"] = (
-                ex["apo_receptor"].atom_array
-                if ex["apo_receptor"] is not None
-                else None
+                ex["apo_receptor"].atom_array if ex["apo_receptor"] is not None else None
             )
             ex["apo_ligand"] = (
                 ex["apo_ligand"].atom_array if ex["apo_ligand"] is not None else None
             )
             ex["pred_receptor"] = (
-                ex["pred_receptor"].atom_array
-                if ex["pred_receptor"] is not None
-                else None
+                ex["pred_receptor"].atom_array if ex["pred_receptor"] is not None else None
             )
             ex["pred_ligand"] = (
                 ex["pred_ligand"].atom_array if ex["pred_ligand"] is not None else None
@@ -626,8 +615,7 @@ if __name__ == "__main__":
     parser.add_argument("--cleanup", action="store_true")
     args = parser.parse_args()
     import_pinder(
-        override_gsutil=args.safe_download
-        or (args.num_proc is not None and args.num_proc > 1)
+        override_gsutil=args.safe_download or (args.num_proc is not None and args.num_proc > 1)
     )
 
     index = get_index()
@@ -639,15 +627,11 @@ if __name__ == "__main__":
         if args.subset is not None:
             if args.subset == "cluster_representatives":
                 assert args.split == "train"
-                index = (
-                    index[index["split"] == args.split].groupby("cluster_id").head(1)
-                )
+                index = index[index["split"] == args.split].groupby("cluster_id").head(1)
                 split = "cluster_representatives_train"
             else:
                 assert args.split == "test"
-                index = index[
-                    (index[f"{args.subset}"]) & (index["split"] == args.split)
-                ]
+                index = index[(index[f"{args.subset}"]) & (index["split"] == args.split)]
                 split = args.subset
         else:
             index = index[index["split"] == args.split]
@@ -666,9 +650,7 @@ if __name__ == "__main__":
             "cluster_id": Value("string"),
             "pdb_id": Value("string"),
             # store res id because we keep pinder numbering for uniprot mapping
-            "complex": ProteinAtomArrayFeature(
-                residue_dictionary=protein_dict, with_res_id=True
-            ),
+            "complex": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
             "apo_receptor": ProteinAtomArrayFeature(
                 residue_dictionary=protein_dict, with_res_id=True
             ),
@@ -687,7 +669,8 @@ if __name__ == "__main__":
             "ligand_uniprot_seq": Value("string"),
             # TODO: switch to array1d when following issue fixed:
             # https://github.com/huggingface/datasets/issues/7243
-            # the two sequences basically define the keys and values of a dictionary mapping resids to uniprot ids
+            # the two sequences basically define the keys and values of a dictionary mapping resids
+            # to uniprot ids
             "receptor_resids_with_uniprot_mapping": Sequence(Value("uint16")),
             "receptor_mapped_uniprot_resids": Sequence(Value("uint16")),
             "ligand_resids_with_uniprot_mapping": Sequence(Value("uint16")),
@@ -709,9 +692,7 @@ if __name__ == "__main__":
             index_list = [index]
         else:
             shard_size = math.ceil(len(index) / args.num_proc)
-            index_list = [
-                index.iloc[i : i + shard_size] for i in range(0, len(index), shard_size)
-            ]
+            index_list = [index.iloc[i : i + shard_size] for i in range(0, len(index), shard_size)]
         print(f"Index list length: {len(index_list)} {[len(df) for df in index_list]}")
         dataset = Dataset.from_generator(
             examples_generator,

@@ -1,10 +1,12 @@
-"""Defines protein objects that are lightweight wrappers around Biotite's AtomArray and AtomArrayStack.
+"""Defines protein objects that are wrappers around Biotite's AtomArray and AtomArrayStack.
 
 This library is not intended to be a general-purpose library for protein structure analysis.
 We simply wrap Biotite's AtomArray and AtomArrayStack to offer a few convenience methods
-for dealing with protein structures in an ML context; specifically exposing residue-level properties,
+for dealing with protein structures in an ML context; specifically exposing residue-level
+properties,
 including coordinates and distances.
 """
+
 import copy
 from dataclasses import dataclass
 from typing import List, Optional, Union
@@ -104,9 +106,7 @@ class ProteinDictionary(ResidueDictionary):
         oxt_id = self.atom_types.index("OXT")
         oxt_mask = atomtype_index == oxt_id
         residues_with_oxt_sizes = self.residue_sizes[restype_index[oxt_mask]]
-        expected_relative_atom_indices[
-            ~oxt_mask
-        ] = super().get_expected_relative_atom_indices(
+        expected_relative_atom_indices[~oxt_mask] = super().get_expected_relative_atom_indices(
             restype_index[~oxt_mask], atomtype_index[~oxt_mask]
         )
         expected_relative_atom_indices[oxt_mask] = residues_with_oxt_sizes
@@ -120,9 +120,7 @@ class ProteinDictionary(ResidueDictionary):
     ):
         assert len(np.unique(chain_id)) == 1
         final_residue_mask = restype_index == restype_index[-1]
-        oxt_mask = final_residue_mask & (
-            relative_atom_index == self.residue_sizes[restype_index]
-        )
+        oxt_mask = final_residue_mask & (relative_atom_index == self.residue_sizes[restype_index])
         atom_names = np.full((len(restype_index)), "", dtype="U6")
         atom_names[~oxt_mask] = self.standard_atoms_by_residue()[
             restype_index[~oxt_mask],
@@ -134,9 +132,7 @@ class ProteinDictionary(ResidueDictionary):
     def get_elements(self, restype_index, relative_atom_index, chain_id):
         assert len(np.unique(chain_id)) == 1
         final_residue_mask = restype_index == restype_index[-1]
-        oxt_mask = final_residue_mask & (
-            relative_atom_index == self.residue_sizes[restype_index]
-        )
+        oxt_mask = final_residue_mask & (relative_atom_index == self.residue_sizes[restype_index])
         elements = np.full((len(restype_index)), "", dtype="U6")
         elements[~oxt_mask] = self.standard_elements_by_residue()[
             restype_index[~oxt_mask],
@@ -147,8 +143,7 @@ class ProteinDictionary(ResidueDictionary):
 
 
 def filter_backbone(array, residue_dictionary):
-    """
-    Filter all peptide backbone atoms of one array.
+    """Filter all peptide backbone atoms of one array.
 
     N, CA, C and O
 
@@ -157,21 +152,18 @@ def filter_backbone(array, residue_dictionary):
     array : AtomArray or AtomArrayStack
         The array to be filtered.
 
-    Returns
+    Returns:
     -------
     filter : ndarray, dtype=bool
         This array is `True` for all indices in `array`, where an atom
         is a part of the peptide backbone.
     """
-
     return np.isin(array.atom_name, residue_dictionary.backbone_atoms) & np.isin(
         array.res_name, residue_dictionary.residue_names
     )
 
 
-def set_annotation_at_masked_atoms(
-    atoms: bs.AtomArray, annot_name: str, new_annot: np.ndarray
-):
+def set_annotation_at_masked_atoms(atoms: bs.AtomArray, annot_name: str, new_annot: np.ndarray):
     assert "mask" in atoms._annot
     atoms.add_annotation(annot_name, dtype=new_annot.dtype)
     if len(new_annot) != len(atoms):
@@ -200,15 +192,12 @@ class ProteinMixin:
 
     def backbone_coords(self, atom_names: Optional[List[str]] = None) -> np.ndarray:
         assert all(
-            atom in self.residue_dictionary.backbone_atoms + ["CB"]
-            for atom in atom_names
+            atom in self.residue_dictionary.backbone_atoms + ["CB"] for atom in atom_names
         ), f"Invalid entries in atom names: {atom_names}"
         coords = super().backbone_coords([at for at in atom_names if at != "CB"])
         if "CB" in atom_names:
             cb_index = atom_names.index("CB")
-            coords_with_cb = np.zeros(
-                (len(coords), len(atom_names), 3), dtype=np.float32
-            )
+            coords_with_cb = np.zeros((len(coords), len(atom_names), 3), dtype=np.float32)
             coords_with_cb[:, cb_index] = self.beta_carbon_coords()
             non_cb_indices = [atom_names.index(at) for at in atom_names if at != "CB"]
             coords_with_cb[:, non_cb_indices] = coords
@@ -220,30 +209,25 @@ class ProteinMixin:
 
     def atom14_coords(self) -> np.ndarray:
         assert (  # noqa: PT018
-            self.residue_dictionary.atom14_compatible
-            and self.residue_dictionary.atom37_compatible
+            self.residue_dictionary.atom14_compatible and self.residue_dictionary.atom37_compatible
         ), "Atom14 representation assumes use of standard amino acid dictionary"
         atom14_coords = np.full((len(self.num_residues), 14, 3), np.nan)
-        atom14_index = RESTYPE_ATOM37_TO_ATOM14[
-            self.atoms.residue_index, self.atoms.atom37_index
-        ]
+        atom14_index = RESTYPE_ATOM37_TO_ATOM14[self.atoms.residue_index, self.atoms.atom37_index]
         atom14_coords[self.atoms.residue_index, atom14_index] = self.atoms.coord
         return atom14_coords
 
     def atom37_coords(self) -> np.ndarray:
-        assert (
-            self.residue_dictionary.atom37_compatible
-        ), "Atom37 representation assumes use of standard amino acid dictionary"
-        # since we have standardised the atoms we can just return standardised atom37 indices for each residue
+        assert self.residue_dictionary.atom37_compatible, (
+            "Atom37 representation assumes use of standard amino acid dictionary"
+        )
+        # since we have standardised the atoms we can just return standardised atom37 indices
+        # for each residue
         atom37_coords = np.full((len(self.num_residues), len(atom_types), 3), np.nan)
-        atom37_coords[
-            self.atoms.residue_index, self.atoms.atom37_index
-        ] = self.atoms.coord
+        atom37_coords[self.atoms.residue_index, self.atoms.atom37_index] = self.atoms.coord
         return atom37_coords
 
 
 class ProteinChain(ProteinMixin, BiomoleculeChain):
-
     """A single protein chain."""
 
     def __init__(

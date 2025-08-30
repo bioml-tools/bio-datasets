@@ -1,5 +1,6 @@
-"""Modified from biotite setup_ccd.py"""
-# flake8: noqa
+"""Modified from biotite setup_ccd.py."""
+# ruff: noqa: F405
+
 import gzip
 import json
 import logging
@@ -14,33 +15,23 @@ import requests
 from bio_datasets.structure.pdbx import *
 
 OUTPUT_CCD = (
-    Path(__file__).parent
-    / "src"
-    / "bio_datasets"
-    / "structure"
-    / "library"
-    / "components.bcif"
+    Path(__file__).parent / "src" / "bio_datasets" / "structure" / "library" / "components.bcif"
 )
 CCD_URL = "https://files.wwpdb.org/pub/pdb/data/monomers/components.cif.gz"
 
 
 def concatenate_ccd(categories=None):
+    """Create the CCD in BinaryCIF format with each category contains the data of all blocks.
+
+    Args:
+        categories : list of str, optional
+            The names of the categories to include.
+            By default, all categories from the CCD are included.
+
+    Returns:
+        compressed_file : BinaryCIFFile
+            The compressed CCD in BinaryCIF format.
     """
-    Create the CCD in BinaryCIF format with each category contains the
-    data of all blocks.
-
-    Parameters
-    ----------
-    categories : list of str, optional
-        The names of the categories to include.
-        By default, all categories from the CCD are included.
-
-    Returns
-    -------
-    compressed_file : BinaryCIFFile
-        The compressed CCD in BinaryCIF format.
-    """
-
     archive = (
         Path(__file__).parent
         / "src"
@@ -74,21 +65,17 @@ def concatenate_ccd(categories=None):
 
 
 def _concatenate_blocks_into_category(pdbx_file, category_name):
-    """
-    Concatenate the given category from all blocks into a single
-    category.
+    """Concatenate the given category from all blocks into a single category.
 
-    Parameters
-    ----------
-    pdbx_file : PDBxFile
-        The PDBx file, whose blocks should be concatenated.
-    category_name : str
-        The name of the category to concatenate.
+    Args:
+        pdbx_file : PDBxFile
+            The PDBx file, whose blocks should be concatenated.
+        category_name : str
+            The name of the category to concatenate.
 
-    Returns
-    -------
-    category : BinaryCIFCategory
-        The concatenated category.
+    Returns:
+        category : BinaryCIFCategory
+            The concatenated category.
     """
     columns_names = _list_all_column_names(pdbx_file, category_name)
     data_chunks = defaultdict(list)
@@ -131,20 +118,17 @@ def _concatenate_blocks_into_category(pdbx_file, category_name):
 
 
 def _list_all_column_names(pdbx_file, category_name):
-    """
-    Get all columns that exist in any block for a given category.
+    """Get all columns that exist in any block for a given category.
 
-    Parameters
-    ----------
-    pdbx_file : PDBxFile
-        The PDBx file to search in for the columns.
-    category_name : str
-        The name of the category to search in.
+    Args:
+        pdbx_file : PDBxFile
+            The PDBx file to search in for the columns.
+        category_name : str
+            The name of the category to search in.
 
-    Returns
-    -------
-    columns_names : list of str
-        The names of the columns.
+    Returns:
+        columns_names : list of str
+            The names of the columns.
     """
     columns_names = set()
     for block in pdbx_file.values():
@@ -154,18 +138,15 @@ def _list_all_column_names(pdbx_file, category_name):
 
 
 def _list_all_category_names(pdbx_file):
-    """
-    Get all categories that exist in any block.
+    """Get all categories that exist in any block.
 
-    Parameters
-    ----------
-    pdbx_file : PDBxFile
-        The PDBx file to search in for the columns.
+    Args:
+        pdbx_file : PDBxFile
+            The PDBx file to search in for the columns.
 
-    Returns
-    -------
-    columns_names : list of str
-        The names of the columns.
+    Returns:
+        columns_names : list of str
+            The names of the columns.
     """
     category_names = set()
     for block in pdbx_file.values():
@@ -174,21 +155,18 @@ def _list_all_category_names(pdbx_file):
 
 
 def _into_fitting_type(string_array, mask):
-    """
-    Try to find a numeric type for a string ndarray, if possible.
+    """Try to find a numeric type for a string ndarray, if possible.
 
-    Parameters
-    ----------
-    string_array : ndarray, dtype=string
-        The array to convert.
-    mask : ndarray, dtype=uint8
-        Only values in `string_array` where the mask is ``MaskValue.PRESENT`` are
-        considered for type conversion.
+    Args:
+        string_array : ndarray, dtype=string
+            The array to convert.
+        mask : ndarray, dtype=uint8
+            Only values in `string_array` where the mask is ``MaskValue.PRESENT`` are
+            considered for type conversion.
 
-    Returns
-    -------
-    array : ndarray
-        The array converted into an appropriate dtype.
+    Returns:
+        array : ndarray
+            The array converted into an appropriate dtype.
     """
     mask = mask == MaskValue.PRESENT
     # Only try to find an appropriate dtype for unmasked values

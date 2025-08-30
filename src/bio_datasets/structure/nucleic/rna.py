@@ -29,9 +29,7 @@ backbone_atoms = [
     "C1'",
 ]
 
-register_preset_res_dict(
-    "rna", residue_names=rna_nucleotides, backbone_atoms=backbone_atoms
-)
+register_preset_res_dict("rna", residue_names=rna_nucleotides, backbone_atoms=backbone_atoms)
 
 register_preset_res_dict(
     "rna_all",

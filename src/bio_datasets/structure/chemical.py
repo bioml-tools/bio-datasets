@@ -10,12 +10,10 @@ from bio_datasets.structure.residue import ResidueDictionary, get_residue_starts
 
 def get_smiles_from_ccd(res_name: str, program: str = "CACTVS"):
     descriptor_cat = get_from_ccd("pdbx_chem_comp_descriptor", res_name)
-    canonical_smiles_mask = (
-        descriptor_cat["type"].as_array(str) == "SMILES_CANONICAL"
-    ) & (descriptor_cat["program"].as_array(str) == program)
-    assert (
-        canonical_smiles_mask.sum() == 1
-    ), "Expected exactly one canonical smiles entry"
+    canonical_smiles_mask = (descriptor_cat["type"].as_array(str) == "SMILES_CANONICAL") & (
+        descriptor_cat["program"].as_array(str) == program
+    )
+    assert canonical_smiles_mask.sum() == 1, "Expected exactly one canonical smiles entry"
     smiles = descriptor_cat["descriptor"].as_array()[canonical_smiles_mask][0]
     return smiles
 
@@ -27,7 +25,8 @@ class SmallMolecule:
     The three letter 'res_name' is a unique identifier for a chemical component dictionary entry.
     The CCD maps to SMILES and InChI strings, as well as idealised 3D coordinates.
 
-    The true 3D coordinates are still the best representation - and already implicitly contain all bond information.
+    The true 3D coordinates are still the best representation - and already implicitly contain all
+    bond information.
 
     Refs:
     CCD: https://www.wwpdb.org/data/ccd
@@ -47,9 +46,7 @@ class SmallMolecule:
         atoms = self.standardise_atoms(atoms, verbose=verbose)
         self.atoms = atoms
         self._standardised = True
-        assert (
-            len(np.unique(atoms.res_id)) == 1
-        ), "Small molecules must be a single residue"
+        assert len(np.unique(atoms.res_id)) == 1, "Small molecules must be a single residue"
 
     def __repr__(self):
         return super().__repr__() + f": {self.res_name}"
@@ -69,9 +66,7 @@ class SmallMolecule:
     @staticmethod
     def standardise_atoms(atoms, verbose: bool = False):
         assert np.all(atoms.res_name[0] == atoms.res_name), "Expected single residue"
-        residue_dictionary = ResidueDictionary.from_ccd_dict(
-            residue_names=[atoms.res_name[0]]
-        )
+        residue_dictionary = ResidueDictionary.from_ccd_dict(residue_names=[atoms.res_name[0]])
         atoms = Biomolecule.standardise_atoms(
             atoms,
             residue_dictionary=residue_dictionary,
@@ -80,13 +75,12 @@ class SmallMolecule:
         )
         atoms.set_annotation(
             "hetero", np.ones(len(atoms), dtype=bool)
-        )  # N.B. this may sometimes be misleading - e.g. if we convert a protein to a small molecule
+        )
+        # N.B. this may sometimes be misleading - e.g. if we convert a protein to a small molecule
         atoms.bonds = bs.connect_via_residue_names(atoms, inter_residue=False)
         return atoms
 
-    def filter_atoms(
-        self, atoms, keep_non_hetero: bool = False, keep_hydrogens: bool = False
-    ):
+    def filter_atoms(self, atoms, keep_non_hetero: bool = False, keep_hydrogens: bool = False):
         if not keep_hydrogens:
             atoms = atoms[(atoms.element != "H") & (atoms.element != "D")]
         if not keep_non_hetero:

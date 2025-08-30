@@ -15,7 +15,8 @@ from .residue import (
     get_residue_starts_mask,
 )
 
-# from biotite.structure.filter import filter_highest_occupancy_altloc  performed automatically by biotite
+# from biotite.structure.filter import filter_highest_occupancy_altloc  performed automatically by
+# biotite
 
 
 ALL_EXTRA_FIELDS = ["occupancy", "b_factor", "atom_id", "charge"]
@@ -84,12 +85,8 @@ class Biomolecule(Generic[T]):
         **kwargs,
     ):
         if residue_dictionary is None:
-            residue_dictionary = (
-                ResidueDictionary.from_ccd_dict()
-            )  # TODO: better default?
-        atoms = load_structure(
-            file_path, file_type=file_type, extra_fields=extra_fields
-        )
+            residue_dictionary = ResidueDictionary.from_ccd_dict()  # TODO: better default?
+        atoms = load_structure(file_path, file_type=file_type, extra_fields=extra_fields)
         return cls(atoms, residue_dictionary, **kwargs)
 
     @property
@@ -109,13 +106,9 @@ class Biomolecule(Generic[T]):
             element_swaps = conversion_dict["element_swaps"]
             from_mask = (atoms.res_name == conversion_dict["residue"]).astype(bool)
             for swap in atom_swaps:
-                atoms.atom_name[
-                    from_mask & (atoms.atom_name == swap[0]).astype(bool)
-                ] = swap[1]
+                atoms.atom_name[from_mask & (atoms.atom_name == swap[0]).astype(bool)] = swap[1]
             for swap in element_swaps:
-                atoms.element[
-                    from_mask & (atoms.element == swap[0]).astype(bool)
-                ] = swap[1]
+                atoms.element[from_mask & (atoms.element == swap[0]).astype(bool)] = swap[1]
             atoms.res_name[from_mask] = conversion_dict["to_residue"]
         return atoms
 
@@ -129,25 +122,17 @@ class Biomolecule(Generic[T]):
         # drop water
         atoms = atoms[atoms.res_name != "HOH"]
         if not keep_hydrogens:
-            assert (
-                "element" in atoms._annot
-            ), "Elements must be present to exclude hydrogens"
+            assert "element" in atoms._annot, "Elements must be present to exclude hydrogens"
             atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
-        if residue_dictionary is None or not getattr(
-            residue_dictionary, "keep_oxt", False
-        ):
+        if residue_dictionary is None or not getattr(residue_dictionary, "keep_oxt", False):
             # oxt complicates things for residue dictionary.
             atoms = atoms[atoms.atom_name != "OXT"]
         # TODO: we actually want to use residue_dictionary.residue_atoms
         if residue_dictionary is not None:
-            expected_residue_mask = np.isin(
-                atoms.res_name, residue_dictionary.residue_names
-            )
+            expected_residue_mask = np.isin(atoms.res_name, residue_dictionary.residue_names)
             if raise_error_on_unexpected and ~expected_residue_mask.any():
                 unexpected_residues = np.unique(atoms[~expected_residue_mask].res_name)
-                raise ValueError(
-                    f"Found unexpected residues: {unexpected_residues} in atom array"
-                )
+                raise ValueError(f"Found unexpected residues: {unexpected_residues} in atom array")
             return atoms[expected_residue_mask]
         return atoms
 
@@ -167,25 +152,15 @@ class Biomolecule(Generic[T]):
     @staticmethod
     def set_index_annotations(atoms, residue_dictionary, residue_starts):
         """Set numeric annotations for discrete categories to help with standardisation."""
-        if (
-            "atomtype_index" not in atoms._annot
-            and residue_dictionary.atom_types is not None
-        ):
+        if "atomtype_index" not in atoms._annot and residue_dictionary.atom_types is not None:
             atoms.set_annotation(
                 "atomtype_index",
-                map_categories_to_indices(
-                    atoms.atom_name, residue_dictionary.atom_types
-                ),
+                map_categories_to_indices(atoms.atom_name, residue_dictionary.atom_types),
             )
-        if (
-            "elemtype_index" not in atoms._annot
-            and residue_dictionary.element_types is not None
-        ):
+        if "elemtype_index" not in atoms._annot and residue_dictionary.element_types is not None:
             atoms.set_annotation(
                 "elemtype_index",
-                map_categories_to_indices(
-                    atoms.element, residue_dictionary.element_types
-                ),
+                map_categories_to_indices(atoms.element, residue_dictionary.element_types),
             )
         if "restype_index" not in atoms._annot:
             atoms.set_annotation(
@@ -206,9 +181,7 @@ class Biomolecule(Generic[T]):
     ):
         atoms = Biomolecule.reorder_chains(atoms)
         residue_starts = get_residue_starts(atoms)
-        atoms = Biomolecule.set_index_annotations(
-            atoms, residue_dictionary, residue_starts
-        )
+        atoms = Biomolecule.set_index_annotations(atoms, residue_dictionary, residue_starts)
 
         (
             new_atom_array,
@@ -222,18 +195,16 @@ class Biomolecule(Generic[T]):
             backbone_only=backbone_only,
         )
 
-        # first we get an array of atom indices for each residue (i.e. a mapping from atom type index to expected index
+        # first we get an array of atom indices for each residue (i.e. a mapping from atom type
+        # index to expected index
         # then we index into this array to get the expected relative index for each atom
-        expected_relative_atom_indices = (
-            residue_dictionary.get_expected_relative_atom_indices(
-                atoms.restype_index, atoms.atomtype_index
-            )
+        expected_relative_atom_indices = residue_dictionary.get_expected_relative_atom_indices(
+            atoms.restype_index, atoms.atomtype_index
         )
 
         unexpected_atom_mask = expected_relative_atom_indices == -100
         if np.any(
-            unexpected_atom_mask
-            & (atoms.res_name != residue_dictionary.unknown_residue_name)
+            unexpected_atom_mask & (atoms.res_name != residue_dictionary.unknown_residue_name)
         ):
             unexpected_atoms = atoms.atom_name[unexpected_atom_mask]
             unexpected_residues = atoms.res_name[unexpected_atom_mask]
@@ -244,6 +215,7 @@ class Biomolecule(Generic[T]):
                         unexpected_residues,
                         atoms.res_id[unexpected_atom_mask],
                         unexpected_atoms,
+                        strict=False,
                     )
                 ]
             )
@@ -257,40 +229,38 @@ class Biomolecule(Generic[T]):
             atoms.res_name == residue_dictionary.unknown_residue_name
         )
         atoms = atoms[~unexpected_unk_atom_mask]
-        expected_relative_atom_indices = expected_relative_atom_indices[
-            ~unexpected_unk_atom_mask
-        ]
+        expected_relative_atom_indices = expected_relative_atom_indices[~unexpected_unk_atom_mask]
         residue_starts = get_residue_starts(atoms)
 
-        assert len(full_residue_starts) == len(
-            residue_starts
-        ), f"Full residue starts: {full_residue_starts} and residue starts: {residue_starts} do not match"
+        assert len(full_residue_starts) == len(residue_starts), (
+            f"Full residue starts: {full_residue_starts} and residue starts: {residue_starts} "
+            "do not match"
+        )
 
         existing_atom_indices_in_full_array = (
             full_residue_starts[atoms.res_index] + expected_relative_atom_indices
         )
 
         for annot_name, annot in atoms._annot.items():
-            if (
-                annot_name in ["atomtype_index", "mask"]
-                or annot_name in full_annot_names
-            ):
+            if annot_name in ["atomtype_index", "mask"] or annot_name in full_annot_names:
                 continue
 
             if annot_name not in new_atom_array._annot:
                 new_atom_array.set_annotation(
                     annot_name, np.zeros(len(new_atom_array), annot.dtype)
                 )
-            getattr(new_atom_array, annot_name)[
-                existing_atom_indices_in_full_array
-            ] = annot.astype(new_atom_array._annot[annot_name].dtype)
+            getattr(new_atom_array, annot_name)[existing_atom_indices_in_full_array] = (
+                annot.astype(new_atom_array._annot[annot_name].dtype)
+            )
 
         # set_annotation vs setattr: set_annotation adds to annot and verifies size
         new_atom_array.coord[existing_atom_indices_in_full_array] = atoms.coord
-        # if we can create a res start index for each atom, we can assign the value based on that...
-        assert (
-            np.unique(new_atom_array.res_index) == np.unique(atoms.res_index)
-        ).all(), f"New res index contains unexpected values (not matching old res index) {np.unique(new_atom_array.res_index)} {np.unique(atoms.res_index)}"
+        # if we can create a res start index for each atom, we can assign the value based on
+        # that...
+        assert (np.unique(new_atom_array.res_index) == np.unique(atoms.res_index)).all(), (
+            "New res index contains unexpected values (not matching old res index) "
+            f"{np.unique(new_atom_array.res_index)} {np.unique(atoms.res_index)}"
+        )
         new_atom_array.set_annotation(
             "res_id",
             atoms.res_id[residue_starts][new_atom_array.res_index].astype(
@@ -312,13 +282,9 @@ class Biomolecule(Generic[T]):
 
         new_atom_array.set_annotation(
             "atomtype_index",
-            map_categories_to_indices(
-                new_atom_array.atom_name, residue_dictionary.atom_types
-            ),
+            map_categories_to_indices(new_atom_array.atom_name, residue_dictionary.atom_types),
         )
-        assert np.all(
-            new_atom_array.atom_name != ""
-        ), "All atoms must be assigned a name"
+        assert np.all(new_atom_array.atom_name != ""), "All atoms must be assigned a name"
         mask = np.zeros(len(new_atom_array), dtype=bool)
         mask[existing_atom_indices_in_full_array] = True
         missing_atoms_strings = [
@@ -327,6 +293,7 @@ class Biomolecule(Generic[T]):
                 new_atom_array.res_name[~mask],
                 new_atom_array.res_id[~mask],
                 new_atom_array.atom_name[~mask],
+                strict=False,
             )
         ]
         if verbose:
@@ -401,9 +368,9 @@ class Biomolecule(Generic[T]):
         if atom_names is None:
             atom_names = self.backbone_atoms
         # requires self.backbone_atoms to be in correct order
-        assert all(
-            atom in self.backbone_atoms for atom in atom_names
-        ), f"Invalid entries in atom names: {atom_names}"
+        assert all(atom in self.backbone_atoms for atom in atom_names), (
+            f"Invalid entries in atom names: {atom_names}"
+        )
         assert self._standardised, "Atoms must be in standard order"
         backbone_coords = self.atoms.coord[self.backbone_mask].reshape(
             -1, len(self.backbone_atoms), 3
@@ -434,9 +401,9 @@ class Biomolecule(Generic[T]):
             # must be at most one atom per atom type per residue
             at_mask = self.atoms.atom_name == at
             residue_indices = self.atoms.residue_index[at_mask]
-            assert len(np.unique(residue_indices)) == len(
-                residue_indices
-            ), "Multiple atoms with same atom type in residue"
+            assert len(np.unique(residue_indices)) == len(residue_indices), (
+                "Multiple atoms with same atom type in residue"
+            )
             all_atom_coords[residue_indices, ix] = self.atoms.coord[at_mask]
         return all_atom_coords
 
@@ -468,9 +435,7 @@ class Biomolecule(Generic[T]):
                 )
             )
         else:
-            raise NotImplementedError(
-                "Muliple atom distance calculations not yet supported"
-            )
+            raise NotImplementedError("Muliple atom distance calculations not yet supported")
         if nan_fill is not None:
             if isinstance(nan_fill, float) or isinstance(nan_fill, int):
                 dists = np.nan_to_num(dists, nan=nan_fill)
@@ -478,9 +443,7 @@ class Biomolecule(Generic[T]):
                 max_dist = np.nanmax(dists, axis=-1)
                 dists = np.nan_to_num(dists, nan=max_dist)
             else:
-                raise ValueError(
-                    f"Invalid nan_fill: {nan_fill}. Please specify a float or int."
-                )
+                raise ValueError(f"Invalid nan_fill: {nan_fill}. Please specify a float or int.")
         return dists
 
     def residue_contacts(
@@ -516,9 +479,9 @@ class BiomoleculeChain(Biomolecule):
         raise_error_on_unexpected: bool = False,
         replace_unexpected_with_unknown: bool = False,
     ):
-        assert (
-            len(np.unique(atoms.chain_id)) == 1
-        ), f"Expected single chain, found chain ids {np.unique(atoms.chain_id)}"
+        assert len(np.unique(atoms.chain_id)) == 1, (
+            f"Expected single chain, found chain ids {np.unique(atoms.chain_id)}"
+        )
         super().__init__(
             atoms=atoms,
             residue_dictionary=residue_dictionary,
@@ -538,9 +501,7 @@ class BaseBiomoleculeComplex(Biomolecule):
     def __init__(self, chains: List[BiomoleculeChain]):
         self._chain_ids = [mol.chain_id for mol in chains]
         self._chains_lookup = {mol.chain_id: mol for mol in chains}
-        self.residue_dictionary = (
-            None  # residue dictionary can be different for different chains
-        )
+        self.residue_dictionary = None  # residue dictionary can be different for different chains
         self._standardised = True
 
     def __str__(self):
@@ -557,7 +518,8 @@ class BaseBiomoleculeComplex(Biomolecule):
         residue_dictionary: Optional[ResidueDictionary] = None,
         **kwargs,
     ) -> "BaseBiomoleculeComplex":
-        # basically ensures that chains are in alphabetical order and all constituents are single-chain.
+        # basically ensures that chains are in alphabetical order and all constituents are
+        # single-chain.
         atoms = Biomolecule.filter_atoms(atoms, residue_dictionary, **kwargs)
         chain_ids = sorted(np.unique(atoms.chain_id))
         assert len(chain_ids) > 0, "No chains found"
@@ -565,9 +527,7 @@ class BaseBiomoleculeComplex(Biomolecule):
             residue_dictionary = cls.default_residue_dictionary()
         return cls(
             [
-                BiomoleculeChain(
-                    atoms[atoms.chain_id == chain_id], residue_dictionary, **kwargs
-                )
+                BiomoleculeChain(atoms[atoms.chain_id == chain_id], residue_dictionary, **kwargs)
                 for chain_id in chain_ids
             ]
         )

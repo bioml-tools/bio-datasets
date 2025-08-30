@@ -17,8 +17,9 @@ class DatasetInfo(DatasetInfo):
     Written to ensure compatibility with standard Datasets library when user-defined
     features not available.
 
-    DatasetInfo.features needs to be the features we actually want to use - i.e. bio_features if available -
-    but during serialisation, features needs to be fallback features (compatible with standard Datasets lib).
+    DatasetInfo.features needs to be the features we actually want to use - i.e. bio_features if
+    available - but during serialisation, features needs to be fallback features (compatible with
+    standard Datasets lib).
     """
 
     _INCLUDED_INFO_IN_YAML: ClassVar[List[str]] = [
@@ -47,12 +48,8 @@ class DatasetInfo(DatasetInfo):
         return asdict(new_info)
 
     def _dump_info(self, file, pretty_print=False):
-        """Dump info in `file` file-like object open in bytes mode (to support remote files)"""
-        file.write(
-            json.dumps(self.to_dict(), indent=4 if pretty_print else None).encode(
-                "utf-8"
-            )
-        )
+        """Dump info in `file` file-like object open in bytes mode (to support remote files)."""
+        file.write(json.dumps(self.to_dict(), indent=4 if pretty_print else None).encode("utf-8"))
 
     @classmethod
     def _from_yaml_dict(cls, yaml_data: dict) -> "DatasetInfo":

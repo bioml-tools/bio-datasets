@@ -12,9 +12,7 @@ def afdb_atom_array():
 
 
 def atoms_top7():
-    return PDBFile.read(
-        os.path.join(os.path.dirname(__file__), "1qys.pdb")
-    ).get_structure(model=1)
+    return PDBFile.read(os.path.join(os.path.dirname(__file__), "1qys.pdb")).get_structure(model=1)
 
 
 @pytest.fixture(scope="session")

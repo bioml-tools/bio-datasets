@@ -1,6 +1,5 @@
-"""
-Upload a foldcomp database to the hub.
-"""
+"""Upload a foldcomp database to the hub."""
+
 import argparse
 import io
 import itertools
@@ -15,12 +14,10 @@ from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein import ProteinDictionary
 
 
-def examples_generator(
-    db_file, max_examples: Optional[int] = None, as_array: bool = False
-):
+def examples_generator(db_file, max_examples: Optional[int] = None, as_array: bool = False):
     assert os.path.exists(db_file)
     with foldcomp.open(db_file, decompress=True) as db:
-        for (name, pdb_str) in itertools.islice(db, max_examples):
+        for name, pdb_str in itertools.islice(db, max_examples):
             # if we opened with decompress False, we wouldn't get name
             if as_array:
                 atoms = load_structure(
@@ -54,9 +51,7 @@ def main(
     # from_generator calls GeneratorBasedBuilder.download_and_prepare and as_dataset
     features = Features(
         name=Value("string"),
-        structure=ProteinAtomArrayFeature.from_preset(
-            "afdb", backbone_only=backbone_only
-        )
+        structure=ProteinAtomArrayFeature.from_preset("afdb", backbone_only=backbone_only)
         if as_array
         else ProteinStructureFeature(
             with_b_factor=True,
