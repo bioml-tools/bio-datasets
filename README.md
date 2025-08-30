@@ -222,3 +222,5 @@ TODO: example
 We would love to receive contributions of code (e.g. new feature types!),
 suggestions for new data formats/feature types, and sharing of compatible bio datasets
 e.g. to the HuggingFace Hub
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
